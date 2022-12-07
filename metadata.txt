@@ -11,9 +11,10 @@ email=francois.thevand@gmail.com
 about=Ce plugin permet de dessiner des formes simples en éliminant la nécessité de créer manuellement une nouvelle couche. Une nouvelle couche contenant le dessin sera automatiquement créée dans un groupe "Dessins". Ce plugin permet de dessiner des points (éventuellement en précisant des coordonnées), des lignes, des cercles, des polygones, et des tampons basés sur des entités existantes. Si un groupe "Evènements" est trouvé dans le projet, les objets sont automatiquement horodatés, positions, longueur et surface automatiquement calculées et entrées en donnée attributaire dans trois couches point, ligne et polygone spécifiques à la gestion de crise.
 about[en]=Plugin that enables drawing simple shapes without the need to manually create a layer. A new memory layer containing the drawing will be automatically created in a "Drawings" group. This plugin enables drawing points (also with coordinates), lines, rectangles, circles, polygons, and buffers of existing features.
 
-homepage=https://github.com/Sapeur04/qdrawEVT
-tracker=https://github.com/Sapeur04/qdrawEVT/issues
-repository=https://github.com/Sapeur04/qdrawEVT
+homepage=https://github.com/fthvd/qdrawEVT/
+tracker=https://github.com/fthvd/qdrawEVT/issues
+repository=https://github.com/fthvd/qdrawEVT
+# End of mandatory metadata
 
 tags=draw, buffer, digitizing
 
