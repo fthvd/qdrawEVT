@@ -210,7 +210,7 @@ class QdrawSettings(QWidget):
         qmlpath = ':/plugins/qdrawEVT/resources/'
         EVTpath = project.homePath()
         os.makedirs(EVTpath + "/Evenements", exist_ok=True)
-        lstlayerEVT = [(EVTpath + "/Evenements/POLYGONE_EVENEMENT.shp", polylayer_fields, QgsWkbTypes.Polygon, qmlpath + 'POLYGONE_EVENEMENT.qml'), (EVTpath + "/Evenements/LIGNE_EVENEMENT.shp", lnglayer_fields, QgsWkbTypes.LineString,  qmlpath + 'LIGNE_EVENEMENT.qml'), (EVTpath + "/Evenements/POINT_EVENEMENT.shp", ptlayer_fields, QgsWkbTypes.Point,  qmlpath + 'POINT_EVENEMENT.qml')]
+        lstlayerEVT = [(EVTpath + "/Evenements/POLYGONE_EVENEMENT.shp", polylayer_fields, QgsWkbTypes.MultiPolygon, qmlpath + 'POLYGONE_EVENEMENT.qml'), (EVTpath + "/Evenements/LIGNE_EVENEMENT.shp", lnglayer_fields, QgsWkbTypes.MultiLineString,  qmlpath + 'LIGNE_EVENEMENT.qml'), (EVTpath + "/Evenements/POINT_EVENEMENT.shp", ptlayer_fields, QgsWkbTypes.MultiPoint,  qmlpath + 'POINT_EVENEMENT.qml')]
         print(project.homePath())
         for layer in lstlayerEVT:
             writer = QgsVectorFileWriter.create(
