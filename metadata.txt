@@ -1,26 +1,26 @@
 [general]
 name=QdrawEVT
 qgisMinimumVersion=3.0
-description=Dessiner des couches évènement horodatées
-description[fr]=Dessiner des couches évènement horodatées
-version=1.0
+description=Dessiner facilement des entités
+description[en]=Easily draw features
+version=1.1
 author=François Thévand
 
 email=francois.thevand@gmail.com
 
-about=Ce plugin permet de dessiner des formes simples en éliminant la nécessité de créer manuellement une nouvelle couche. Une nouvelle couche contenant le dessin sera automatiquement créée dans un groupe "Dessins". Ce plugin permet de dessiner des points (éventuellement en précisant des coordonnées), des lignes, des cercles, des polygones, et des tampons basés sur des entités existantes. Si un groupe "Evènements" est trouvé dans le projet, les objets sont automatiquement horodatés, positions, longueur et surface automatiquement calculées et entrées en donnée attributaire dans trois couches point, ligne et polygone spécifiques à la gestion de crise.
-about[en]=Plugin that enables drawing simple shapes without the need to manually create a layer. A new memory layer containing the drawing will be automatically created in a "Drawings" group. This plugin enables drawing points (also with coordinates), lines, rectangles, circles, polygons, and buffers of existing features.
+about=D'après le code de qdraw de Jeremy Karlson - Ce plugin permet de dessiner des formes simples en éliminant la nécessité de créer manuellement une nouvelle couche. Une nouvelle couche contenant le dessin sera automatiquement créée dans un groupe "Dessins". Ce plugin permet de dessiner des points (éventuellement en précisant des coordonnées), des lignes, des cercles, des polygones, et des tampons basés sur des entités existantes. Particularité de la version qdrawEVT V 1.0 : Si un groupe "Evènements" est trouvé dans le projet, les objets sont automatiquement horodatés, positions, longueur et surface automatiquement calculées et entrées en donnée attributaire dans trois couches point, ligne et polygone spécifiques à la gestion de crise.
+about[en]=This plugin allows drawing simple shapes eliminating the need to manually create a new layer. A new layer containing the drawing will be automatically created in a "Drawings" group. This plugin allows to draw points (possibly by specifying coordinates), lines, circles, polygons, and buffers based on existing entities. Special feature of the qdrawEVT V 1.0 version: If an "Events" group is found in the project, the objects are automatically timestamped, positions, length and area automatically calculated and entered as attribute data in three point, line and polygon layers specific to the management of crisis.
 
-homepage=https://github.com/fthvd/qdrawEVT/
-tracker=https://github.com/fthvd/qdrawEVT/issues
-repository=https://github.com/fthvd/qdrawEVT
-# End of mandatory metadata
+homepage=https://github.com/fthvd/qdrawevt/
+tracker=https://github.com/fthvd/qdrawevt/issues
+repository=https://github.com/fthvd/qdrawevt
 
 tags=draw, buffer, digitizing
 
 # Optional items:
 
-changelog=1.0 Par François Thévand d'après le code de Qdraw de Jeremy Karlson : adaptation à l'utilisation en gestion de crise, utilisation automatique de couches évènement spécifiques si présentes dans le projet dans un groupe nommé "Evènements".
+changelog=1.1 Mise au format multipolygone, multilinestring et multipoint des couches évènement.
+1.0 Par François Thévand d'après le code de Qdraw de Jeremy Karlson : adaptation à l'utilisation en gestion de crise, utilisation automatique de couches évènement spécifiques si présentes dans le projet dans un groupe nommé "Evènements".
 
 category=Plugins
 icon=icon.png
