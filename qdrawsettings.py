@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# QDraw: plugin that makes drawing easier
+# qdrawEVT: plugin that makes drawing easier
 # Author: Jérémy Kalsron
 #         jeremy.kalsron@gmail.com
 #
@@ -27,11 +27,13 @@ from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtCore import Qt, QCoreApplication, pyqtSignal, QVariant
 
 from qgis.core import QgsSettings, QgsProject, QgsVectorLayer, QgsVectorFileWriter,\
-    QgsWkbTypes, QgsField, QgsFields, QgsLayerTree, QgsApplication
+    QgsWkbTypes, QgsField, QgsFields, QgsLayerTree, QgsApplication, QgsLayerTreeLayer
 
 from qgis.utils import iface
 
-import os, unicodedata
+from qgis.core import *
+
+import os, unicodedata, random
 
 from . import resources
 
@@ -40,12 +42,14 @@ class QdrawSettings(QWidget):
     """Window used to change settings (transparency/color/event layers/layers path)"""
     settingsChanged = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, form_wgt_libelle):
         QWidget.__init__(self)
 
+        self.form_wgt_libelle = form_wgt_libelle
         self.setWindowTitle(self.tr('QdrawEVT - Settings'))
         self.setFixedSize(400, 180)
         self.center()
+        self.keepselect = False
 
         # default color
         #self.color = QColor(60, 151, 255, 255)
@@ -97,6 +101,27 @@ class QdrawSettings(QWidget):
     def tr(self, message):
         return QCoreApplication.translate('QdrawEVT', message)
 
+    def handler_selectedLayers(self):
+        self.iface = iface
+        if self.chkbox_selectedlayers.checkState():
+            msg = self.tr("The display of the selections will be preserved.")
+            self.keepselect = True
+        else:
+            msg = self.tr("The display of selections will be removed.")
+            self.keepselect = False
+            # Suppression d'une éventuelle sélection en cours
+            root = QgsProject.instance().layerTreeRoot()
+            for checked_layers in root.checkedLayers():
+                try:
+                    checked_layers.removeSelection()
+                except:
+                    pass
+        QMessageBox.information(
+            self.iface.mainWindow(),
+            self.tr("Fenêtre carte : "), msg)
+        self.close()
+        # return keepselect
+
     def handler_opacitySliderValue(self, val):
         self.color.setAlpha(val)
         self.lbl_opacity.setText(
@@ -138,24 +163,33 @@ class QdrawSettings(QWidget):
     def handler_createLayers(self):
         self.iface = iface
         project = QgsProject.instance()
+        # print('os.path : ' + str(os.path))
+        # print('project.path : ' + str(project.homePath()))
         root = project.layerTreeRoot()
         nameproj = project.fileName()
+        # os.chdir(project.homePath())
+        evtpath = project.homePath()
+        qmlpath = ':/plugins/qdrawEVT/resources/'
         evt = None
         groupevt = None
-        for group in root.children():
-            test = ''.join(
-                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-            if test == 'EVENEMENTS':
-                evt = True
-                groupevt = group
-                if os.path.isfile("Evenements/POLYGONE_EVENEMENT.shp") or os.path.isfile("Evenements/LIGNE_EVENEMENT.shp") or os.path.isfile("Evenements/POINT_EVENEMENT.shp"):
-                    print('Couches déjà créées')
-                    QMessageBox.warning(
-                        self.iface.mainWindow(),
-                        self.tr("Commande inutile : "), self.tr("Les couches sont déja présentes."))
-                    self.btn_createLayers.setEnabled(False)
-                    # self.close()
-                    return
+
+        # for group in root.children():
+        #     test = ''.join(
+        #         x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+        #     if test == 'EVENEMENTS':
+        #         evt = True
+        #         groupevt = group
+        #         # print('os.path : ' + str(os.path))
+        #         # print('project.path : ' + str(project.homePath()))
+        #         if os.path.isfile(evtpath + "Evenements/POLYGONE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/LIGNE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/POINT_EVENEMENT.shp"):
+        #             print('Couches déjà créées')
+        #             QMessageBox.warning(
+        #                 self.iface.mainWindow(),
+        #                 self.tr("Commande inutile : "), self.tr("Les couches sont déja présentes."))
+        #             self.btn_createLayers.setEnabled(False)
+        #             # self.close()
+        #         return
+
         if not evt:
             if nameproj != '':
                 groupevt = root.insertGroup(0, 'Evenements')
@@ -168,78 +202,119 @@ class QdrawSettings(QWidget):
                 self.close()
                 return
 
-        # Création des couches et affichage dans l'arborescence, groupe évènements
+        # Préparation de l'ouverture ou de la création des couches et affichage dans l'arborescence, groupe évènements
         crs = QgsProject.instance().crs()
         transform_context = QgsProject.instance().transformContext()
         save_options = QgsVectorFileWriter.SaveVectorOptions()
         save_options.driverName = "ESRI Shapefile"
         save_options.fileEncoding = "UTF-8"
+        lstlayerEVT = []
 
-        polylayer_fields = QgsFields()
-        polylayer_fields.append(QgsField('libelle', QVariant.String))
-        polylayer_fields.append(QgsField('date', QVariant.String))
-        polylayer_fields.append(QgsField('h_creation', QVariant.String))
-        polylayer_fields.append(QgsField('source', QVariant.String))
-        polylayer_fields.append(QgsField('h_constat', QVariant.String))
-        polylayer_fields.append(QgsField('remarques', QVariant.String))
-        polylayer_fields.append(QgsField('surface', QVariant.Int))
-        polylayer_fields.append(QgsField('utilisatr', QVariant.String))
+        if os.path.isfile(evtpath + "/Evenements/POLYGONE_EVENEMENT.shp"):
+            print('Champ QgisV3LayerRandomColor : ' + self.form_wgt_libelle)
+            vlayer = QgsVectorLayer(evtpath + "/Evenements/POLYGONE_EVENEMENT.shp", "POLYGONE_EVENEMENT", "ogr")
+            print('Chemin :' + evtpath + "Evenements/POLYGONE_EVENEMENT.shp")
+            vlayer.loadNamedStyle(qmlpath + 'POLYGONE_EVENEMENT.qml')
+            project.addMapLayer(vlayer)
+            layer = root.findLayer(vlayer.id())
+            clone = layer.clone()
+            parent = layer.parent()
+            groupevt.insertChildNode(0, clone)
+            parent.removeChildNode(layer)
+            self.QgisV3LayerRandomColor(vlayer, self.form_wgt_libelle)
+            vlayer.setReadOnly(True)
+            vlayer.triggerRepaint()
+        else:
+            polylayer_fields = QgsFields()
+            polylayer_fields.append(QgsField('libelle', QVariant.String))
+            polylayer_fields.append(QgsField('date', QVariant.String))
+            polylayer_fields.append(QgsField('h_creation', QVariant.String))
+            polylayer_fields.append(QgsField('source', QVariant.String))
+            polylayer_fields.append(QgsField('h_constat', QVariant.String))
+            polylayer_fields.append(QgsField('remarques', QVariant.String))
+            polylayer_fields.append(QgsField('surface', QVariant.Double, 'double', 10, 0))
+            polylayer_fields.append(QgsField('utilisatr', QVariant.String))
+            os.makedirs(evtpath + "/Evenements", exist_ok=True)
+            lstlayerEVT.append((evtpath + "/Evenements/POLYGONE_EVENEMENT.shp", polylayer_fields, QgsWkbTypes.MultiPolygon, qmlpath + 'POLYGONE_EVENEMENT.qml'))
 
-        lnglayer_fields = QgsFields()
-        lnglayer_fields.append(QgsField('libelle', QVariant.String))
-        lnglayer_fields.append(QgsField('date', QVariant.String))
-        lnglayer_fields.append(QgsField('h_creation', QVariant.String))
-        lnglayer_fields.append(QgsField('source', QVariant.String))
-        lnglayer_fields.append(QgsField('h_constat', QVariant.String))
-        lnglayer_fields.append(QgsField('remarques', QVariant.String))
-        lnglayer_fields.append(QgsField('longueur', QVariant.Int))
-        lnglayer_fields.append(QgsField('utilisatr', QVariant.String))
+        if os.path.isfile(evtpath + "/Evenements/LIGNE_EVENEMENT.shp"):
+            vlayer = QgsVectorLayer(evtpath + "/Evenements/LIGNE_EVENEMENT.shp", "LIGNE_EVENEMENT", "ogr")
+            vlayer.loadNamedStyle(qmlpath + 'LIGNE_EVENEMENT.qml')
+            project.addMapLayer(vlayer)
+            layer = root.findLayer(vlayer.id())
+            clone = layer.clone()
+            parent = layer.parent()
+            groupevt.insertChildNode(0, clone)
+            parent.removeChildNode(layer)
+            vlayer.setReadOnly(True)
+            vlayer.triggerRepaint()
+        else:
+            lnglayer_fields = QgsFields()
+            lnglayer_fields.append(QgsField('libelle', QVariant.String))
+            lnglayer_fields.append(QgsField('date', QVariant.String))
+            lnglayer_fields.append(QgsField('h_creation', QVariant.String))
+            lnglayer_fields.append(QgsField('source', QVariant.String))
+            lnglayer_fields.append(QgsField('h_constat', QVariant.String))
+            lnglayer_fields.append(QgsField('remarques', QVariant.String))
+            lnglayer_fields.append(QgsField('longueur', QVariant.Double, 'double', 10, 0))
+            lnglayer_fields.append(QgsField('utilisatr', QVariant.String))
+            lstlayerEVT.append((evtpath + "/Evenements/LIGNE_EVENEMENT.shp", lnglayer_fields, QgsWkbTypes.MultiLineString, qmlpath + 'LIGNE_EVENEMENT.qml'))
 
-        ptlayer_fields = QgsFields()
-        ptlayer_fields.append(QgsField('libelle', QVariant.String)),
-        ptlayer_fields.append(QgsField('date', QVariant.String)),
-        ptlayer_fields.append(QgsField('h_creation', QVariant.String)),
-        ptlayer_fields.append(QgsField('source', QVariant.String)),
-        ptlayer_fields.append(QgsField('h_constat', QVariant.String)),
-        ptlayer_fields.append(QgsField('remarques', QVariant.String)),
-        ptlayer_fields.append(QgsField('x_gps', QVariant.Double, 'double', 10, 6)),
-        ptlayer_fields.append(QgsField('y_gps', QVariant.Double, 'double', 10, 6)),
-        ptlayer_fields.append(QgsField('utilisatr', QVariant.String))
+        if os.path.isfile(evtpath + "/Evenements/POINT_EVENEMENT.shp"):
+            vlayer = QgsVectorLayer(evtpath + "/Evenements/POINT_EVENEMENT.shp", "POINT_EVENEMENT", "ogr")
+            vlayer.loadNamedStyle(qmlpath + 'POINT_EVENEMENT.qml')
+            project.addMapLayer(vlayer)
+            layer = root.findLayer(vlayer.id())
+            clone = layer.clone()
+            parent = layer.parent()
+            groupevt.insertChildNode(0, clone)
+            parent.removeChildNode(layer)
+            vlayer.setReadOnly(True)
+            vlayer.triggerRepaint()
+        else:
+            ptlayer_fields = QgsFields()
+            ptlayer_fields.append(QgsField('libelle', QVariant.String)),
+            ptlayer_fields.append(QgsField('date', QVariant.String)),
+            ptlayer_fields.append(QgsField('h_creation', QVariant.String)),
+            ptlayer_fields.append(QgsField('source', QVariant.String)),
+            ptlayer_fields.append(QgsField('h_constat', QVariant.String)),
+            ptlayer_fields.append(QgsField('remarques', QVariant.String)),
+            ptlayer_fields.append(QgsField('x_gps', QVariant.Double, 'double', 10, 6)),
+            ptlayer_fields.append(QgsField('y_gps', QVariant.Double, 'double', 10, 6)),
+            ptlayer_fields.append(QgsField('utilisatr', QVariant.String))
+            lstlayerEVT.append((evtpath + "/Evenements/POINT_EVENEMENT.shp", ptlayer_fields, QgsWkbTypes.MultiPoint,  qmlpath + 'POINT_EVENEMENT.qml'))
 
-        # qmlpath = QgsApplication.qgisSettingsDirPath() + 'qdrawEVT/qml/'
-        qmlpath = ':/plugins/qdrawEVT/resources/'
-        EVTpath = project.homePath()
-        os.makedirs(EVTpath + "/Evenements", exist_ok=True)
-        lstlayerEVT = [(EVTpath + "/Evenements/POLYGONE_EVENEMENT.shp", polylayer_fields, QgsWkbTypes.MultiPolygon, qmlpath + 'POLYGONE_EVENEMENT.qml'), (EVTpath + "/Evenements/LIGNE_EVENEMENT.shp", lnglayer_fields, QgsWkbTypes.MultiLineString,  qmlpath + 'LIGNE_EVENEMENT.qml'), (EVTpath + "/Evenements/POINT_EVENEMENT.shp", ptlayer_fields, QgsWkbTypes.MultiPoint,  qmlpath + 'POINT_EVENEMENT.qml')]
-        print(project.homePath())
-        for layer in lstlayerEVT:
-            writer = QgsVectorFileWriter.create(
-                layer[0],
-                layer[1],
-                layer[2],
-                crs,
-                transform_context,
-                save_options
-            )
-            lyr = self.iface.addVectorLayer(layer[0], '', 'ogr')
-            pr = lyr.dataProvider()
-            lyr.updateFields()
-            lyr.loadNamedStyle(layer[3])
-            myptlayer = root.findLayer(lyr.id())
-            myptlayerclone = myptlayer.clone()
-            parent = myptlayer.parent()
-            groupevt.insertChildNode(0, myptlayerclone)
-            parent.removeChildNode(myptlayer)
-            lyr.triggerRepaint()
-            lyr.commitChanges()
+        if lstlayerEVT != []:
+            for layer in lstlayerEVT:
+                writer = QgsVectorFileWriter.create(
+                    layer[0],
+                    layer[1],
+                    layer[2],
+                    crs,
+                    transform_context,
+                    save_options
+                )
+                lyr = self.iface.addVectorLayer(layer[0], '', 'ogr')
+                pr = lyr.dataProvider()
+                lyr.loadNamedStyle(layer[3])
+                myptlayer = root.findLayer(lyr.id())
+                myptlayerclone = myptlayer.clone()
+                parent = myptlayer.parent()
+                groupevt.insertChildNode(0, myptlayerclone)
+                parent.removeChildNode(myptlayer)
+                layer.setReadOnly(True)
+                lyr.updateFields()
+                lyr.triggerRepaint()
+                lyr.commitChanges()
 
-            if writer.hasError() != QgsVectorFileWriter.NoError:
-                print(self.tr("Error when creating shapefile: "), writer.errorMessage())
-                QMessageBox.critical(
-                    self.iface.mainWindow(),
-                    self.tr("Error when creating shapefile ") + lyr.name() + " : ", writer.errorMessage())
-                return
-            del writer
+                if writer.hasError() != QgsVectorFileWriter.NoError:
+                    print(self.tr("Error when creating shapefile: "), writer.errorMessage())
+                    QMessageBox.critical(
+                        self.iface.mainWindow(),
+                        self.tr("Error when creating shapefile ") + lyr.name() + " : ", writer.errorMessage())
+                    return
+                del writer
+
         root = project.layerTreeRoot()
         group = root.children()
         for n in group:
@@ -277,6 +352,7 @@ class QdrawSettings(QWidget):
             if test == 'EVENEMENTS':
                 evt = True
                 groupevt = group
+                os.chdir(project.homePath())
                 if os.path.isfile("Evenements/POLYGONE_EVENEMENT.shp") or os.path.isfile("Evenements/LIGNE_EVENEMENT.shp") or os.path.isfile("Evenements/POINT_EVENEMENT.shp"):
                     print('Couches déjà créées')
                     # QMessageBox.warning(
@@ -297,7 +373,7 @@ class QdrawSettings(QWidget):
 
     def showEvent(self, o):
         print('show passé')
-        self.verifEVT()
+        # self.verifEVT()
         o.accept()
 
     def closeEvent(self, e):
@@ -329,4 +405,51 @@ class QdrawSettings(QWidget):
         self.colorFont=QColor(int(settings.value("colorFontRed", 0)), int(settings.value("colorFontGreen", 0)), int(settings.value("colorFontBlue", 0)), int(settings.value("colorFontAlpha", 255)))
         self.color = QColor(int(settings.value("colorRed", 60)), int(settings.value("colorGreen", 151)), int(settings.value("colorBlue", 255)), int(settings.value("colorAlpha", 255)))
         
-        
+    def QgisV3LayerRandomColor(self, layer, fieldName):
+        """
+        QGIS3 : Classification automatique du moteur de rendu pyqgis catégorisé sur le champ 'fieldname' de la table attributaire 'layer'
+        copyright           : (C) 2019 by Sylvain T., CNRS FR 3020
+        Licence             : Creative Commons CC-BY-SA V4+
+        Sources             : https://gis.stackexchange.com/questions/226642/automatic-pyqgis-categorized-renderer-classification
+        :param layer: QgsVectorLayer
+        :param fieldName: str
+        :return:
+        """
+
+        # provide file name index and field's unique values
+        fni = layer.dataProvider().fields().indexFromName(fieldName)
+        unique_values = layer.uniqueValues(fni)
+
+        # fill categories
+        categories = []
+        for unique_value in unique_values:
+            # initialize the default symbol for this geometry type
+            symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+
+            # configure a symbol layer
+            layer_style = {}
+            # Couleurs aléatoires, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
+            layer_style['color'] = '%d, %d, %d, %d' % (random.randrange(0, 256), random.randrange(0, 256), random.randrange(0, 256), 30)
+            # Couleur rouge, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
+            # layer_style['color'] = '%d, %d, %d, %d' % (255, 0, 0, 25)
+            layer_style['outline'] = '#000000'
+            symbol_layer = QgsSimpleFillSymbolLayer.create(layer_style)
+
+            # replace default symbol layer with the configured one
+            if symbol_layer is not None:
+                symbol.changeSymbolLayer(0, symbol_layer)
+
+            # create renderer object
+            category = QgsRendererCategory(unique_value, symbol, str(unique_value))
+            # entry for the list of category items
+            categories.append(category)
+
+        # create renderer object
+        renderer = QgsCategorizedSymbolRenderer(fieldName, categories)
+
+        # assign the created renderer to the layer
+        if renderer is not None:
+            layer.setRenderer(renderer)
+
+        layer.triggerRepaint()
+

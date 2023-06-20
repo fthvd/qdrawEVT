@@ -1,0 +1,40 @@
+<RCC>
+    <qresource prefix="/plugins/qdrawEVT" >
+        <file>icon.png</file>
+        <file>resources/icon_DrawText.png</file>
+        <file>resources/icon_DrawText_EVT.png</file>
+        <file>resources/icon_DrawP.png</file>
+        <file>resources/icon_DrawP_EVT.png</file>
+        <file>resources/icon_DrawPt.png</file>
+        <file>resources/icon_DrawPt_EVT.png</file>
+        <file>resources/icon_DrawPtXY.png</file>
+        <file>resources/icon_DrawPtXY_EVT.png</file>
+        <file>resources/icon_DrawPtDMS.png</file>
+        <file>resources/icon_DrawPtDMS_EVT.png</file>
+        <file>resources/icon_DrawL.png</file>
+        <file>resources/icon_DrawL_EVT.png</file>
+        <file>resources/icon_DrawR.png</file>
+        <file>resources/icon_DrawR_EVT.png</file>
+        <file>resources/icon_DrawC.png</file>
+        <file>resources/icon_DrawC_EVT.png</file>
+        <file>resources/icon_DrawCp.png</file>
+        <file>resources/icon_DrawCp_EVT.png</file>
+        <file>resources/icon_DrawT.png</file>
+        <file>resources/icon_DrawT_EVT.png</file>
+        <file>resources/icon_DrawTP.png</file>
+        <file>resources/icon_DrawTP_EVT.png</file>
+        <file>resources/icon_Settings.png</file>
+        <file>resources/icon_Settings_EVT.png</file>
+        <file>resources/icon_AT.png</file>
+        <file>resources/icon_export.png</file>
+        <file>resources/icon_exportAll.png</file>
+        <file>resources/icon_HlC.png</file>
+        <file>resources/icon_HlG.png</file>
+        <file>resources/icon_save.png</file>
+        <file>resources/icon_saveAll.png</file>
+        <file>resources/icon_Zoom.png</file>
+        <file>resources/POINT_EVENEMENT.qml</file>
+        <file>resources/LIGNE_EVENEMENT.qml</file>
+        <file>resources/POLYGONE_EVENEMENT.qml</file>
+    </qresource>
+</RCC>

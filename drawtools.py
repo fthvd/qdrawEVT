@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# QDraw: plugin that makes drawing easier
+# qdrawEVT: plugin that makes drawing easier
 # Author: Jérémy Kalsron
 #         jeremy.kalsron@gmail.com
 #
@@ -60,6 +60,9 @@ from math import sqrt, pi, cos, sin
 def msg_inf(msg='',parent=None):
     #Affiche un messagre d'info via Qt box"""
     QMessageBox.information(parent, 'Information', '%s' % (msg))
+
+def tr(message):
+    return QCoreApplication.translate('QdrawEVT', message)
 
 class DrawRect(QgsMapTool):
     '''Classe de sélection avec un Rectangle'''
@@ -273,14 +276,11 @@ class DrawCircle(QgsMapTool):
         if self.rb.numberOfVertices() > 3:
             self.selectionDone.emit()
         else:
-            radius, ok = QInputDialog.getDouble(
-                self.iface.mainWindow(), tr('Radius'),
-                tr('Give a radius in m:'), min=0)
+            radius, ok = QInputDialog.getDouble(self.iface.mainWindow(), tr('Radius'), tr('Give a radius in m:'), min=0)
             if radius > 0 and ok:
                 cp = self.toMapCoordinates(e.pos())
                 cp.setX(cp.x() + radius)
-                rbcircle(self.rb, self.toMapCoordinates(
-                    e.pos()), cp, self.segments)
+                rbcircle(self.rb, self.toMapCoordinates(e.pos()), cp, self.segments)
                 self.rb.show()
                 self.selectionDone.emit()
         return None
@@ -293,17 +293,61 @@ class DrawCircle(QgsMapTool):
         self.rb.reset(True)
         QgsMapTool.deactivate(self)
 
-
 def rbcircle(rb, center, edgePoint, N):
     '''Fonction qui affiche une rubberband sous forme de cercle'''
     r = sqrt(center.sqrDist(edgePoint))
     rb.reset(QgsWkbTypes.PolygonGeometry)
     for itheta in range(N + 1):
         theta = itheta * (2.0 * pi / N)
-        rb.addPoint(QgsPointXY(center.x() + r * cos(theta),
-                               center.y() + r * sin(theta)))
+        rb.addPoint(QgsPointXY(center.x() + r * cos(theta), center.y() + r * sin(theta)))
     return
 
+    selectionDone = pyqtSignal()
+    move = pyqtSignal()
+
+    def __init__(self, iface, couleur):
+        canvas = iface.mapCanvas()
+        QgsMapTool.__init__(self, canvas)
+        self.canvas = canvas
+        self.iface = iface
+        self.status = 0
+        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        self.rb.setColor(couleur)
+        return None
+
+    def keyPressEvent(self, e):
+        if e.matches(QKeySequence.Undo):
+            if self.rb.numberOfVertices() > 1:
+                self.rb.removeLastPoint()
+
+    def canvasPressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            if self.status == 0:
+                self.rb.reset(QgsWkbTypes.LineGeometry)
+                self.status = 1
+            self.rb.addPoint(self.toMapCoordinates(e.pos()))
+        else:
+            if self.rb.numberOfVertices() > 2:
+                self.status = 0
+                self.selectionDone.emit()
+            else:
+                self.reset()
+        return None
+
+    def canvasMoveEvent(self, e):
+        if self.rb.numberOfVertices() > 0 and self.status == 1:
+            self.rb.removeLastPoint(0)
+            self.rb.addPoint(self.toMapCoordinates(e.pos()))
+        self.move.emit()
+        return None
+
+    def reset(self):
+        self.status = 0
+        self.rb.reset(QgsWkbTypes.LineGeometry)
+
+    def deactivate(self):
+        self.rb.reset(QgsWkbTypes.LineGeometry)
+        QgsMapTool.deactivate(self)
 
 class DrawLine(QgsMapTool):
     selectionDone = pyqtSignal()
@@ -352,7 +396,6 @@ class DrawLine(QgsMapTool):
     def deactivate(self):
         self.rb.reset(QgsWkbTypes.LineGeometry)
         QgsMapTool.deactivate(self)
-
 
 class DrawPoint(QgsMapTool):
     selectionDone = pyqtSignal()
@@ -421,11 +464,6 @@ class SelectPoint(QgsMapTool):
         self.rb.reset(QgsWkbTypes.PolygonGeometry)
         self.rbSelect.reset(QgsWkbTypes.PolygonGeometry)
         QgsMapTool.deactivate(self)
-
-
-def tr(message):
-    return QCoreApplication.translate('QdrawEVT', message)
-
 
 class DMSDialog(QDialog):
     def __init__(self):
