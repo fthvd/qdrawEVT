@@ -1,0 +1,17 @@
+Premiers pas
+
+Le plugin est fourni avec un projet exemple dans lequel il vous appartiendra d'adapter les chemins de fichiers. 
+Les chemins de fichiers utilisés sont ceux couramment utilisés en DDDT, les sigistes de cette structure ne seront pas dépaysés.
+
+Le fichier "montage disque reseau.bat" est destiné à offrir la possibilité de faire fonctionner le projet en mode autonome. En reproduisant sur un disque dur externe les mêmes dossiers vers lesquels pointent les lecteurs réseau, tout sera transparent pour le projet.
+
+Les icônes par défaut sont celles de couleur rouge.
+
+Si un groupe "Evenements" est présent dans le projet, les icônes restent rouge à l'utilisation des outils, et les évènements sont enregistrés selon leur géométrie, dans les couches évènement contenues dans le groupe.
+
+Si ce groupe est absent du projet, les icônes deviendront bleues à l'utilisation, les cobjets se créeront dans un groupe "Dessins"
+Dans un projet sans groupe "Evenements", il est possible d'insérer un groupe "Evenements" contenant trois couches point, ligne et polygone avec leur mise en forme, en utilisant l'icône "Réglages" du plugin.
+
+Les couches du groupe "Evenements" sont en lecture seule. Une fois un item créé, il n'est pas effaçable. Pour parer au problème d'une possible erreur de création, les couches sont munies d'une analyse thématique intégrée, qui permet ainsi de décocher un éventuel objet géographique erroné.
+
+Une notice d'utilisation détaillée est en cours de rédaction
