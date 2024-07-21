@@ -18,12 +18,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys
+import os, unicodedata, random, sys
 import webbrowser
 from qgis import utils
 from qgis.PyQt import QtGui, QtCore
 from qgis.PyQt.QtGui import QIcon, QColor, QPixmap
-from qgis.PyQt.QtCore import Qt, QSize, QDate, QTime, QDateTime, QTranslator, QCoreApplication, QVariant, QSettings, QLocale, qVersion
+from qgis.PyQt.QtCore import Qt, QSize, QDate, QTime, QDateTime, QTranslator, QCoreApplication, QVariant, QSettings, QLocale, qVersion, QItemSelectionModel
 from qgis.PyQt.QtWidgets import (QWidget, QDesktopWidget, QTabWidget, QVBoxLayout, QProgressDialog,
                                 QStatusBar, QPushButton, QTableWidget, QTableWidgetItem, QFileDialog,
                                 QToolBar, QAction, QApplication, QHeaderView, QInputDialog, QComboBox,
@@ -38,7 +38,8 @@ from qgis.utils import *
 # Display and export attributes from all active layers
 class AttributesTable(QWidget):
     # Un attribut passé à une classe se récupère ici dans def __init__
-    def __init__(self, iface, name):
+    # def __init__(self, iface, name):
+    def __init__(self, name):
         QWidget.__init__(self)
 
         # *** ATTENTION *** : dans le fichier de traduction la ligne <name>QdrawEVT</name> porte sur la classe principale (ici QdrawEVT dans le fichier qdrawEVT.py)
@@ -147,6 +148,36 @@ class AttributesTable(QWidget):
         self.highlight_features()
 
     def exportAllLayer(self):
+        # Tests de la présence des groupes spécifiques gestion de crise
+        for group in self.root.children():
+            # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
+            test = ''.join(
+                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test == 'DESSINS':
+                self.groupe_dessin = self.root.findGroup('Dessins')
+                # Décochage, groupe inutile dans la sélection
+                self.groupe_dessin.setItemVisibilityCheckedRecursive(False)
+            else:
+                self.groupe_dessin = None
+            if test == 'EVENEMENTS':
+                self.groupe_evt = self.root.findGroup('Evenements')
+                # Décochage, groupe inutile dans la sélection
+                self.groupe_evt.setItemVisibilityCheckedRecursive(False)
+            else:
+                self.groupe_evt = None
+            if test == 'ENJEUX':
+                self.groupe_enjeux = self.root.findGroup('Enjeux')
+                # Cochage des groupes désirés dans la sélection
+                self.groupe_enjeux.setItemVisibilityCheckedRecursive(True)
+            else:
+                self.groupe_enjeux = None
+            if test == 'ADMINISTRATIF':
+                self.groupe_administratif = self.root.findGroup('Administratif')
+                # Décochage, groupe inutile dans la sélection
+                self.groupe_administratif.setItemVisibilityCheckedRecursive(False)
+            else:
+                self.groupe_administratif = None
+
         tab_count = self.tabWidget.count()
         if tab_count != 0:
             for tab in range(0, tab_count):
@@ -168,38 +199,100 @@ class AttributesTable(QWidget):
                         if item.feature not in features:
                             features.append(item.feature)
                     name = self.tr('Extract') + ' ' + table.title
-                    ok = True
-                    # Pour affichage d'une boite de dialogue  denommage de l'extraction
+
+                    # Pour affichage d'une boite de dialogue de denommage de l'extraction
                     # name = ''
                     # while not name.strip() and ok == True:
                     #     name, ok = QInputDialog.getText(self, self.tr('Layer name'), self.tr('Give a name to the layer:'))
-                    if ok:
-                        layer = QgsVectorLayer(type + "?crs=" + table.crs.authid(), name, "memory")
-                        layer.startEditing()
-                        layer.dataProvider().addAttributes(features[0].fields().toList())
-                        layer.dataProvider().addFeatures(features)
-                        layer.commitChanges()
-                        name_extracts = self.tr('Extracts in') + ' ' + self.name
-                        if self.project.layerTreeRoot().findGroup(name_extracts) is None:
-                            self.project.layerTreeRoot().insertChildNode(0, QgsLayerTreeGroup(name_extracts))
-                        group = self.project.layerTreeRoot().findGroup(name_extracts)
-                        self.project.addMapLayer(layer, False)
+                    # if ok:
 
-                        # récupération du style de la couche dans laquelle est faite l'extraction
-                        style = QgsProject.instance().mapLayersByName(table.title)[0].renderer()
-                        # Application du style à l'extrait de couche
-                        if style != None:
-                            layer.setRenderer(style)
-                            layer.triggerRepaint()
-                        iface.layerTreeView().refreshLayerSymbology(layer.id())
-                        iface.mapCanvas().refresh()
-                        group.insertLayer(0, layer)
-                        group.setExpanded(False)
-                        group.setExpanded(True)
-                        iface.layerTreeView().refreshLayerSymbology(layer.id())
-                        iface.mapCanvas().refresh()
+                    layer = QgsVectorLayer(type + "?crs=" + table.crs.authid(), name, "memory")
+                    layer.startEditing()
+                    layer.dataProvider().addAttributes(features[0].fields().toList())
+                    layer.dataProvider().addFeatures(features)
+                    name_extracts = self.tr('Extracts in') + ' ' + self.name
+                    if self.project.layerTreeRoot().findGroup(name_extracts) is None:
+                        self.project.layerTreeRoot().insertChildNode(0, QgsLayerTreeGroup(name_extracts))
+                    group_extr = self.project.layerTreeRoot().findGroup(name_extracts)
+                    self.project.addMapLayer(layer, False)
+                    # layerclone = layer.clone()
+                    # parent = layer.parent()
+                    group_extr.insertLayer(0, layer)
+                    # Les deux commandes suivantes sont nécessaire pour que le groupe soit développé
+                    group_extr.setExpanded(False)
+                    group_extr.setExpanded(True)
+                    # parent.removeChildNode(layer)
+                    layer.commitChanges()
+
+                    # Option 1 de copier-coller de tous les styles de la couche dans laquelle est faite l'extraction vers la couche extraite
+                    # RECUPERE LES ACTIONS
+                    src_lyrs = QgsProject.instance().mapLayersByName(table.title)
+                    src = iface.setActiveLayer(src_lyrs[0])
+                    if src:
+                        iface.actionCopyLayerStyle().trigger()
+                        dest_lyrs = iface.setActiveLayer(layer)
+                        if dest_lyrs:
+                            # print('copie du style dans ' + str(dest_lyrs))
+                            iface.actionPasteLayerStyle().trigger()
+
+                    # Option 2 de copier-coller de tous les styles de la couche dans laquelle est faite l'extraction vers la couche extraite
+                    # NE RECUPERE PAS LES ACTIONS
+                    # layer_from = QgsProject.instance().mapLayersByName(table.title)[0]
+                    # layer_to = QgsProject.instance().mapLayersByName(layer.name())[0]
+                    # layer_to.styleManager().copyStylesFrom(layer_from.styleManager())
+
+                    # Option 3 de récupération du style de la couche dans laquelle est faite l'extraction
+                    # NE RECUPERE PAS LES ACTIONS
+                    # style = QgsProject.instance().mapLayersByName(table.title)[0].renderer()
+                    # # Application du style à l'extrait de couche
+                    # if style != None:
+                    #     layer.setRenderer(style)
+                    #     layer.triggerRepaint()
                 else:
-                    self.mb.pushWarning(self.tr('Warning'), self.tr('There is no selected feature!'))
+                    # self.mb.pushWarning(self.tr('Warning'), self.tr('There is no selected feature!'))
+                    pass
+                table.clearSelection()
+
+            nodes = self.root.children()
+            for n in nodes:
+                if isinstance(n, QgsLayerTreeGroup):
+                    if n.isExpanded() == True:
+                        n.setExpanded(False)
+                        # print(f"Layer group '{n.name()}' now collapsed.")
+            # Tests de la présence des groupes spécifiques gestion de crise
+            for group in self.root.children():
+                # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
+                test = ''.join(
+                    x for x in unicodedata.normalize('NFKD', group.name()) if
+                    unicodedata.category(x)[0] == 'L').upper()
+                # Cochage et expansion du groupe dessins si présent
+                if test == 'DESSINS':
+                    self.groupe_dessin = self.root.findGroup('Dessins')
+                    self.groupe_dessin.setItemVisibilityCheckedRecursive(True)
+                    self.groupe_dessin.setExpanded(False)
+                    self.groupe_dessin.setExpanded(True)
+                # Cochage et expansion du groupe evenements si présent
+                if test == 'EVENEMENTS':
+                    self.groupe_evt = self.root.findGroup('Evenements')
+                    self.groupe_evt.setItemVisibilityCheckedRecursive(True)
+                    self.groupe_evt.setExpanded(False)
+                    self.groupe_evt.setExpanded(True)
+                # Décochage du groupe enjeux si présent
+                if test == 'ENJEUX':
+                    self.groupe_enjeux = self.root.findGroup('Enjeux')
+                    self.groupe_enjeux.setItemVisibilityChecked(False)
+                    # self.groupe_enjeux.setExpanded(True)
+                    # self.groupe_enjeux.setExpanded(False)
+            # On déplie le groupe extraction et on rafraichit l'affichage
+            group_extr.setExpanded(False)
+            group_extr.setExpanded(True)
+            self.select(group_extr)
+            layerNode = self.root.findLayer(layer.id())
+            layerNode.setExpanded(False)
+            layerNode.setExpanded(True)
+            iface.layerTreeView().refreshLayerSymbology(layer.id())
+            iface.mapCanvas().refresh()
+            table.clearSelection()
 
     def exportLayer(self):
         if self.tabWidget.count() != 0:
@@ -208,6 +301,11 @@ class AttributesTable(QWidget):
             # ligne ajoutée pour sélection de tous les items et exportation
             table.selectAll()
             items = table.selectedItems()
+            name = self.tr('Extract') + ' ' + table.title
+            name_extracts = self.tr('Extracts in') + ' ' + self.name
+            if self.project.layerTreeRoot().findGroup(name_extracts) is None:
+                self.project.layerTreeRoot().insertChildNode(0, QgsLayerTreeGroup(name_extracts))
+            group_extr = self.project.layerTreeRoot().findGroup(name_extracts)
             if len(items) > 0:
                 type = ''
                 if items[0].feature.geometry().type() == QgsWkbTypes.PointGeometry:
@@ -220,37 +318,89 @@ class AttributesTable(QWidget):
                 for item in items:
                     if item.feature not in features:
                         features.append(item.feature)
-                name = self.tr('Extract') + ' ' + table.title
-                ok = True
+
                 # Pour affichage d'une boite de dialogue  denommage de l'extraction
                 # name = ''
                 # while not name.strip() and ok == True:
                 #     name, ok = QInputDialog.getText(self, self.tr('Layer name'), self.tr('Give a name to the layer:'))
-                if ok:
-                    layer = QgsVectorLayer(type+"?crs="+table.crs.authid(),name,"memory")
-                    layer.startEditing()
-                    layer.dataProvider().addAttributes(features[0].fields().toList())
-                    layer.dataProvider().addFeatures(features)
-                    layer.commitChanges()
-                    name_extracts = self.tr('Extracts in') + ' ' + self.name
-                    if self.project.layerTreeRoot().findGroup(name_extracts) is None:
-                        self.project.layerTreeRoot().insertChildNode(0, QgsLayerTreeGroup(name_extracts))
-                    group = self.project.layerTreeRoot().findGroup(name_extracts)
-                    self.project.addMapLayer(layer, False)
+                # if ok:
 
-                    # récupération du style de la couche dans laquelle est faite l'extraction
-                    style = QgsProject.instance().mapLayersByName(table.title)[0].renderer()
-                    # Application du style à l'extrait de couche
-                    if style != None:
-                        layer.setRenderer(style)
-                        layer.triggerRepaint()
-                    group.insertLayer(0, layer)
-                    group.setExpanded(False)
-                    group.setExpanded(True)
-                    iface.layerTreeView().refreshLayerSymbology(layer.id())
-                    iface.mapCanvas().refresh()
+                layer = QgsVectorLayer(type+"?crs="+table.crs.authid(), name, "memory")
+                layer.startEditing()
+                layer.dataProvider().addAttributes(features[0].fields().toList())
+                layer.dataProvider().addFeatures(features)
+                self.project.addMapLayer(layer, False)
+                group_extr.insertLayer(0, layer)
+                layer.commitChanges()
+
+                # Option 1 de copier-coller de tous les styles de la couche dans laquelle est faite l'extraction vers la couche extraite
+                # RECUPERE LES ACTIONS
+                src_lyrs = QgsProject.instance().mapLayersByName(table.title)
+                src = iface.setActiveLayer(src_lyrs[0])
+                if src:
+                    iface.actionCopyLayerStyle().trigger()
+                    dest_lyrs = iface.setActiveLayer(layer)
+                    if dest_lyrs:
+                        # print('copie du style dans ' + str(dest_lyrs))
+                        iface.actionPasteLayerStyle().trigger()
+
+                # Option 2 de copier-coller de tous les styles de la couche dans laquelle est faite l'extraction vers la couche extraite
+                # NE RECUPERE PAS LES ACTIONS
+                # layer_from = QgsProject.instance().mapLayersByName(table.title)[0]
+                # layer_to = QgsProject.instance().mapLayersByName(layer.name())[0]
+                # layer_to.styleManager().copyStylesFrom(layer_from.styleManager())
+
+                # Option 3 de récupération du style de la couche dans laquelle est faite l'extraction
+                # NE RECUPERE PAS LES ACTIONS
+                # style = QgsProject.instance().mapLayersByName(table.title)[0].renderer()
+                # # Application du style à l'extrait de couche
+                # if style != None:
+                #     layer.setRenderer(style)
+                #     layer.triggerRepaint()
+
+                nodes = self.root.children()
+                for n in nodes:
+                    if isinstance(n, QgsLayerTreeGroup):
+                        if n.isExpanded() == True:
+                            n.setExpanded(False)
+                            # print(f"Layer group '{n.name()}' now collapsed.")
+                # Tests de la présence des groupes spécifiques gestion de crise
+                for group in self.root.children():
+                    # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
+                    test = ''.join(
+                        x for x in unicodedata.normalize('NFKD', group.name()) if
+                        unicodedata.category(x)[0] == 'L').upper()
+                    # Cochage et expansion du groupe dessins si présent
+                    if test == 'DESSINS':
+                        self.groupe_dessin = self.root.findGroup('Dessins')
+                        self.groupe_dessin.setItemVisibilityCheckedRecursive(True)
+                        self.groupe_dessin.setExpanded(False)
+                        self.groupe_dessin.setExpanded(True)
+                    # Cochage et expansion du groupe evenements si présent
+                    if test == 'EVENEMENTS':
+                        self.groupe_evt = self.root.findGroup('Evenements')
+                        self.groupe_evt.setItemVisibilityCheckedRecursive(True)
+                        self.groupe_evt.setExpanded(False)
+                        self.groupe_evt.setExpanded(True)
+                    # Décochage du groupe enjeux si présent
+                    if test == 'ENJEUX':
+                        self.groupe_enjeux = self.root.findGroup('Enjeux')
+                        self.groupe_enjeux.setItemVisibilityChecked(False)
+                        # self.groupe_enjeux.setExpanded(True)
+                        # self.groupe_enjeux.setExpanded(False)
+                # On déplie le groupe extraction et on rafraichit l'affichage
             else:
-                self.mb.pushWarning(self.tr('Warning'), self.tr('There is no selected feature!'))
+                # self.mb.pushWarning(self.tr('Warning'), self.tr('There is no selected feature!'))
+                pass
+            group_extr.setExpanded(False)
+            group_extr.setExpanded(True)
+            self.select(group_extr)
+            layerNode = self.root.findLayer(layer.id())
+            layerNode.setExpanded(False)  # added TRUE
+            layerNode.setExpanded(True)
+            iface.layerTreeView().refreshLayerSymbology(layer.id())
+            iface.mapCanvas().refresh()
+            table.clearSelection()
 
     def highlight_features(self):
         for item in self.highlight:
@@ -275,13 +425,14 @@ class AttributesTable(QWidget):
                     self.highlight.append(highlight)
                     self.highlight_rows.append(item.row())
                     g = QgsGeometry(item.feature.geometry())
-                    g.transform(QgsCoordinateTransform(tab.layer.crs(), QgsCoordinateReferenceSystem(2154), QgsProject.instance())) # geometry reprojection to get meters
+                    # geometry reprojection to get meters
+                    g.transform(QgsCoordinateTransform(tab.layer.crs(), QgsProject.instance().crs(), QgsProject.instance()))
                     nb += 1
                     area += g.area()
                     length += g.length()
-            if tab.layer.geometryType()==QgsWkbTypes.PolygonGeometry:
-                tab.sb.showMessage(self.tr('Selected features')+': '+str(nb)+'  '+self.tr('Area')+': '+"%.2f"%area+' m'+u'²')
-            elif tab.layer.geometryType()==QgsWkbTypes.LineGeometry:
+            if tab.layer.geometryType() == QgsWkbTypes.PolygonGeometry:
+                tab.sb.showMessage(self.tr('Selected features') + ': ' + str(nb) + '  ' + self.tr('Area') + ': '+"%.2f"%area+' m'+u'²')
+            elif tab.layer.geometryType() == QgsWkbTypes.LineGeometry:
                 tab.sb.showMessage(self.tr('Selected features')+': '+str(nb)+'  '+self.tr('Length')+': '+"%.2f"%length+' m')
             else:
                 tab.sb.showMessage(self.tr('Selected features')+': '+str(nb))
@@ -306,16 +457,20 @@ class AttributesTable(QWidget):
     # Add a new tab
 
     # Modification F. Thévand ajout paramètre visible :
+    # (layer, fields_name, fields_type, cells, idx_visible)
+
     def addLayer(self, layer, headers, types, features, visible):
+        self.layer = layer
+        # print('layer entrée addLayer : ' + str(self.layer))
         tab = QWidget()
-        tab.layer = layer
+        tab.layer = self.layer
         p1_vertical = QVBoxLayout(tab)
         p1_vertical.setContentsMargins(0,0,0,0)
         
         table = QTableWidget()
         table.itemSelectionChanged.connect(self.highlight_features)
-        table.title = layer.name()
-        table.crs = layer.crs()
+        table.title = self.layer.name()
+        table.crs = self.layer.crs()
         table.setColumnCount(len(headers))
         if len(features) > 0:
             table.setRowCount(len(features))
@@ -602,6 +757,7 @@ class AttributesTable(QWidget):
                 return False
 
     def center(self):
+            # size_ecran = QtGui.QDesktopWidget().screenGeometry()
             screen = QDesktopWidget().screenGeometry()
             size = self.geometry()
             self.move((screen.width()-size.width())/2, (screen.height()-size.height())/2)
@@ -612,7 +768,7 @@ class AttributesTable(QWidget):
             table.setParent(None)
         
     def closeEvent(self, e):
-        result = QMessageBox.question(self, self.tr("Saving ?"), self.tr("Would you like to save results before exit?"), buttons = QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+        result = QMessageBox.question(self, self.tr("Saving?"), self.tr("Would you like to save results before exit?"), buttons = QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
         if result == QMessageBox.Yes:
             if self.saveAttributes(False):
                 self.clear()
@@ -624,3 +780,13 @@ class AttributesTable(QWidget):
             e.accept()
         else:
             e.ignore()
+
+    def select(self, name):
+        view = iface.layerTreeView()
+        m = view.model()
+        listIndexes = m.match(m.index(0, 0), Qt.DisplayRole, name, Qt.MatchFixedString)
+        if listIndexes:
+            i = listIndexes[0]
+            view.selectionModel().setCurrentIndex(i, QItemSelectionModel.ClearAndSelect)
+        else:
+            raise Exception(f"'{name}' not found")

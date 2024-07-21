@@ -22,6 +22,7 @@ from qgis.PyQt.QtWidgets import QDialog, QComboBox, QLineEdit, QVBoxLayout, \
     QCheckBox, QDialogButtonBox, QLabel
 from qgis.core import QgsProject
 
+import os, unicodedata, random
 
 class QDrawLayerDialog(QDialog):
     def __init__(self, iface, gtype, layerevt, evt):
@@ -30,13 +31,15 @@ class QDrawLayerDialog(QDialog):
         self.setWindowTitle(self.tr('Drawing'))
 
         self.name = QLineEdit()
-
-        if gtype == 'point' or gtype == 'XYpoint' or gtype == 'text':
-            gtype = 'Point'
+        # if gtype == 'point' or gtype == 'XYpoint' or gtype == 'text':
+        if gtype == 'text':
+            self.gtype = 'text'
+        elif gtype == 'point' or gtype == 'XYpoint':
+            self.gtype = 'Point'
         elif gtype == 'line':
-            gtype = 'LineString'
+            self.gtype = 'LineString'
         else:
-            gtype = 'Polygon'
+            self.gtype = 'Polygon'
 
         # change here by QgsMapLayerComboBox()
         self.layerBox = QComboBox()
@@ -45,7 +48,7 @@ class QDrawLayerDialog(QDialog):
             # test d'existance d'une couche en mémoire et inscription du nom de la couche dans la liste
             if layer.providerType() == "memory":
                 # ligne suivante à remplacer par if layer.geometryType() == :
-                if gtype in layer.dataProvider().dataSourceUri()[:26]: #  must be of the same type of the draw
+                if self.gtype in layer.dataProvider().dataSourceUri()[:26]: #  must be of the same type of the draw
                     if 'field='+self.tr('Drawings')+':string(255,0)' in layer.dataProvider().dataSourceUri()[-28:]: # must have its first field named Drawings, string type
                         self.layers.append(layer)
                         self.layerBox.addItem(layer.name())
@@ -54,15 +57,21 @@ class QDrawLayerDialog(QDialog):
                 self.layers.append(layer)
                 self.layerBox.addItem(layer.name())
 
-        if not layerevt:
+        if not evt:
             self.addLayer = QCheckBox(self.tr('Add to an existing layer'))
             self.addLayer.toggled.connect(self.addLayerChecked)
-        elif layerevt:
+            self.addLayer.setEnabled(True)
+            self.addLayer.setChecked(False)
+        elif evt:
             self.addLayer = QCheckBox(self.tr('Add to an existing layer'))
             self.addLayer.toggled.connect(self.addLayerChecked)
-            self.addLayer.setEnabled(False)
-            self.addLayer.setChecked(True)
-
+            if self.gtype != 'text':
+                self.addLayer.setEnabled(False)
+                self.addLayer.setChecked(True)
+            else:
+                self.addLayer.setEnabled(False)
+                self.addLayer.setChecked(False)
+        # print('self.gtype : ' + str(self.gtype))
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
         buttons.accepted.connect(self.accept)
@@ -100,3 +109,43 @@ class QDrawLayerDialog(QDialog):
         dialog.layerBox.currentIndex(),
         dialog.layers,
         result == QDialog.Accepted)
+
+class QDrawLayerDialogSelection(QDialog):
+    def __init__(self, root):
+        QDialog.__init__(self)
+
+        self.setWindowTitle(self.tr('Select'))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        vbox = QVBoxLayout()
+        vbox.addWidget(QLabel(self.tr("Drawing completed. Make a selection in its grip? WARNING: remember to check the desired groups and layers in the selection")))
+        vbox.addWidget(buttons)
+        self.setLayout(vbox)
+        # Obtenir l'instance du projet en cours
+        self.project = QgsProject.instance()
+        # Root du projet en cours
+        self.root = self.project.layerTreeRoot()
+
+    def tr(self, message):
+        return QCoreApplication.translate('QdrawEVT', message)
+
+    def getcoche(self, warning):
+        list_coche = []
+        for group in self.root.children():
+            # print('group.name() : ' + group.name())
+            # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
+            test = ''.join(
+                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test not in groupes_a_gerer:
+                coche = self.root.findGroup(str(group.name()))
+                if coche.isVisible():
+                    list_coche.append(True)
+            else:
+                continue
+        if list_coche == []:
+            return False
+        else:
+            return True

@@ -3,13 +3,14 @@ name=QdrawEVT
 qgisMinimumVersion=3.0
 description=Dessiner et selectionner facilement les entités dans l'emprise du dessin
 description[en]=Easily draw and select entities within the drawing footprint
-version=2.5
-author=François Thevand
+version=2.21
+author=Francois Thevand
+license=GPLv3
 
 email=francois.thevand@gmail.com
 
-about=D'après le code de qdraw de Jeremy Karlson - Ce plugin permet de dessiner des formes simples en éliminant la nécessité de créer manuellement une nouvelle couche. Une nouvelle couche contenant le dessin sera automatiquement créée dans un groupe "Dessins". Ce plugin permet de dessiner des points (éventuellement en précisant des coordonnées), des lignes, des cercles, des polygones, et des tampons basés sur des entités existantes. Particularité de la version qdrawEVT V 2.0 : il est possible de créer un groupe "Evenements" dans le projet, avec trois couches point, ligne et polygone spécifiquement mises en forme. Les objets sont automatiquement horodatés, positions, longueur et surface automatiquement calculées, composant ainsi un veritable historique des actions effectuées. Il est aussi possible d'effectuer des sélections par intersection avec l'objet créé dans la liste des couches cochées du projet. Il est possible ensuite de sauvegarder ces sélections en tableau ODS et en couches-mémoire.
-about[en]=From qdraw code by Jeremy Karlson - This plugin allows simple shapes to be drawn by eliminating the need to manually create a new layer. A new layer containing the drawing will be automatically created in a "Drawings" group. This plugin allows to draw points (possibly by specifying coordinates), lines, circles, polygons, and buffers based on existing entities. Special feature of the qdrawEVT V 2.0 version: it is possible to create an "Events" group in the project, with three point, line and polygon layers specifically formatted. The objects are automatically timestamped, positions, length and area automatically calculated, thus composing a true history of the actions carried out. It is also possible to make selections by intersection with the object created in the list of checked layers of the project. It is then possible to save these selections in ODS table and in memory layers.
+about=D'après les codes de qdraw et qgeric de Jeremy Karlson - Ce plugin permet de dessiner des formes simples en éliminant la nécessité de créer manuellement une nouvelle couche. Une nouvelle couche contenant le dessin sera automatiquement créée dans un groupe "Dessins". Ce plugin permet de dessiner des points (éventuellement en précisant des coordonnées), des lignes, des cercles, des polygones, et des tampons basés sur des entités existantes. Particularité de la version qdrawEVT : il est possible de créer un groupe "Evenements" dans le projet, avec trois couches point, ligne et polygone spécifiquement mises en forme. Les objets sont automatiquement horodatés, positions, longueur et surface automatiquement calculées, composant ainsi un veritable historique des actions effectuées. Il est aussi possible d'effectuer des sélections par intersection avec l'objet créé dans la liste des couches cochées du projet. Il est possible ensuite de sauvegarder ces sélections en tableau ODS et en couches-mémoire. Des précisions sont données dans le fichier "Lisez_moi.txt" présent dans le dossier "Help" du plugin.
+about[en]=Based on Jeremy Karlson's qdraw and qgeric codes - This plugin allows you to draw simple shapes by eliminating the need to manually create a new layer. A new layer containing the drawing will be automatically created in a "Drawings" group. This plugin allows you to draw points (optionally specifying coordinates), lines, circles, polygons, and buffers based on existing entities. Special feature of the qdrawEVT V 2.0 version: it is possible to create an "Events" group in the project, with three specifically formatted point, line and polygon layers. The objects are automatically time-stamped, positions, length and surface area automatically calculated, thus creating a true history of the actions performed. It is also possible to make selections by intersection with the object created in the list of checked layers of the project. It is then possible to save these selections in an ODS table and in memory layers. Details are given in the "Read_me.txt" file present in the "Help" folder of the plugin.
 
 homepage=https://github.com/fthvd/qdrawevt/
 tracker=https://github.com/fthvd/qdrawevt/issues
@@ -19,7 +20,16 @@ tags=draw, buffer, digitizing
 
 # Optional items:
 
-changelog=2.5 Application d'une analyse thématique automatique sur les couches évènement, protection de ces couches contre l'effacement et l'écrasement. Ajout d'une documentation dans le dossier "Help" du plugin.
+changelog=2.21 Clarification du message de choix de la sélection.
+		  2.20 Correction de l'affichage des textes en mode EVT, clarification des infos-bulle de l'outil de dessin de tampons
+		  2.12 Correction messages d'erreur intempestifs
+		  2.11 Affinage de la précision de saisie des coordonnées DMS : secondes décimales et zoom sur point créé
+		  2.10 Correction du décochage intempestif des couches en utilisation dans un projet sans groupe évenements. (icônes bleues)
+          2.9 Correction de bugs non bloquants, complément de traduction, mise en lecture seule des fiches évènement.
+		  2.8 Optimisation du code et des fenêtres de dialogue.
+		  2.7 Modification de la sélection pour prise en compte de toutes les catégories de style des couches intersectées.
+		  2.6 Correction de bugs.
+		  2.5 Application d'une analyse thématique automatique sur les couches évènement, protection de ces couches contre l'effacement et l'écrasement. Ajout d'une documentation dans le dossier "Help" du plugin.
 		  2.4 Ajout d'une icône d'exportation en couche mémoire de tous les onglets de la sélection
 		  2.3 Correction dans l'enregistrement des couches dessin et évènement
 		  2.2 Amélioration de la cohérence des noms pour les extractions et application des styles sur les exrtraits de couches.

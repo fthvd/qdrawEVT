@@ -490,18 +490,29 @@ class DMSDialog(QDialog):
         int_val = QIntValidator()
         int_val.setBottom(0)
 
+        # Modif F. THEVAND pour obligation point en séparateur décimal
+
+        motif = r"^[0-9]+\.[0-9]+$"  # exemple: 6.85468
+        regex = QRegExp(motif)
+        float_latS_val = QRegExpValidator(regex, self.lat_S)
+        float_latDM_val = QRegExpValidator(regex, self.lat_DM)
+        float_lonS_val = QRegExpValidator(regex, self.lon_S)
+        float_lonDM_val = QRegExpValidator(regex, self.lon_DM)
+
+        # fin modif F. THEVAND
+
         float_val = QDoubleValidator()
         float_val.setBottom(0)
 
         self.lat_D.setValidator(int_val)
-        self.lat_M.setValidator(int_val)
-        self.lat_S.setValidator(float_val)
-        self.lat_DM.setValidator(float_val)
+        self.lat_M.setValidator(float_val)
+        self.lat_S.setValidator(float_latS_val)
+        self.lat_DM.setValidator(float_latDM_val)
 
         self.lon_D.setValidator(int_val)
-        self.lon_M.setValidator(int_val)
-        self.lon_S.setValidator(float_val)
-        self.lon_DM.setValidator(float_val)
+        self.lon_M.setValidator(float_val)
+        self.lon_S.setValidator(float_lonS_val)
+        self.lon_DM.setValidator(float_lonDM_val)
 
         self.lat_NS = QComboBox()
         self.lat_NS.addItem("N")
@@ -636,7 +647,8 @@ class XYDialog(QDialog):
         self.X = QLineEdit()
         self.Y = QLineEdit()
 
-        # Modif F. THEVAND
+        # Modif F. THEVAND pour obligation point en séparateur décimal
+
 #        X_val = QDoubleValidator()
 #        Y_val = QDoubleValidator()
 
@@ -678,7 +690,6 @@ class XYDialog(QDialog):
 
     def getPoint(self, crs):
         # fix_print_with_import
-        print(crs)
         canvas = iface.mapCanvas()
         dialog = XYDialog()
         dialog.crs = crs

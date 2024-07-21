@@ -38,7 +38,7 @@ from .drawtools import DrawPoint, DrawRect, DrawLine, DrawCircle, DrawPolygon, S
 
 from .qdrawsettings import QdrawSettings
 
-from .qdrawlayerdialogEVT import QDrawLayerDialog
+from .qdrawlayerdialogEVT import QDrawLayerDialog, QDrawLayerDialogSelection
 
 from datetime import datetime, date, time
 
@@ -46,24 +46,17 @@ import os, unicodedata, random
 
 from . import resources
 
-# # Obtenir l'instance du projet en cours
-project = QgsProject.instance()
-# Root du projet en cours
-root = project.layerTreeRoot()
-# minse en variable du groupe Enjeux pour cochage/décochage avec la commande groupe_enjeux.setItemVisibilityCheckedRecursive(True/False)
-# groupe_enjeux = root.findGroup('Enjeux')
-
 # Test existance du groupe Evènements avec suppression des espaces et des accents dans le nom du groupe testé
-evt = False
-groupevt = False
-for group in root.children():
-    test = ''.join(
-        x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-    if test == 'EVENEMENTS':
-        evt = True
-        groupevt = group
+# evt = False
+# groupevt = False
+# for group in root.children():
+#     test = ''.join(
+#         x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+#     if test == 'EVENEMENTS':
+#         evt = True
+#         groupevt = group
 
-# Inscrire ici le nom des couches evenement et les noms de colonnes attributaires
+# Inscrire ici le nom des couches evenement et les noms de colonnes attributaires utilisées dans ces couches
 evtpnt = 'POINT_EVENEMENT'
 evtlgn = 'LIGNE_EVENEMENT'
 evtpol = 'POLYGONE_EVENEMENT'
@@ -79,6 +72,13 @@ form_wgt_longueur = 'longueur'
 form_wgt_x_gps = 'x_gps'
 form_wgt_y_gps = 'y_gps'
 form_wgt_utilisatr = 'utilisatr'
+# Inscrire ici le nom des groupes devant être oté de la sélection
+# En majuscules et sans espaces pour test avec boucle sur fonction :
+# for group in self.root.children():
+#   test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+lst_group_no_select = ['FONDSDEPLAN']
+lst_group_evt = ['EVENEMENTS']
+lst_group_drawing = ['DESSINS']
 
 #Fonction de reconstruction du chemin absolu vers la ressource image ou autre fichier
 def resolve(name, basepath=None):
@@ -88,6 +88,18 @@ def resolve(name, basepath=None):
 
 class QdrawEVT(object):
     def __init__(self, iface):
+
+        self.feature = None
+        self.features = None
+        self.layer = None
+        self.index = None
+        self.layers = None
+        self.featureid = None
+        self.groupes_coches = None
+        self.request = None
+        self.XYcrs = None
+        self.layerevtname = None
+        self.drawShape = None
 
         overrideLocale = QSettings().value("locale/overrideFlag", False, type=bool)
         if not overrideLocale: locale = QLocale.system().name()
@@ -114,12 +126,36 @@ class QdrawEVT(object):
         self.project = QgsProject.instance()
         # Root du projet en cours
         self.root = self.project.layerTreeRoot()
-        # minse en variable du groupe Enjeux pour cochage/décochage avec la commande groupe_enjeux.setItemVisibilityCheckedRecursive(True/False)
-        for group in self.root.children():
-            # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
-            test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-            if test == 'ENJEUX':
-                self.groupe_enjeux = self.root.findGroup('Enjeux')
+
+        # # mise en variable des groupes a gérer pour la sélection
+        # self.group_no_select = []
+        # for group in self.root.children():
+        #     test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+        #     if test in lst_group_no_select:
+        #         self.group_no_select.append(group)
+        #
+        # self.group_evt = []
+        # for group in self.root.children():
+        #     test = ''.join(
+        #         x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+        #     if test in lst_group_evt:
+        #         self.group_evt.append(group)
+        #
+        # self.group_drawing = []
+        # for group in self.root.children():
+        #     test = ''.join(
+        #         x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+        #     if test in lst_group_drawing:
+        #         self.group_evt.append(group)
+        # if self.group_evt != []:
+        #     self.evt = True
+        # else:
+        #     self.evt = False
+
+        self.evt = None
+        self.group_no_select = []
+        self.group_evt = []
+        self.group_drawing = []
 
         self.iface = iface
         self.sb = self.iface.statusBarIface()
@@ -253,14 +289,14 @@ class QdrawEVT(object):
         bufferMenu = QMenu()
         polygonBufferAction = QAction(
             QIcon(':/plugins/qdrawEVT/resources/icon_DrawTP_EVT.png'),
-            self.tr('Polygon buffer drawing tool on the selected layer'),
+            self.tr('Buffer drawing with polygonal selection of objects in the selected layer'),
             bufferMenu)
         polygonBufferAction.triggered.connect(self.drawPolygonBuffer)
         bufferMenu.addAction(polygonBufferAction)
         icon_path = ':/plugins/qdrawEVT/resources/icon_DrawT_EVT.png'
         self.add_action(
             icon_path,
-            text=self.tr('Buffer drawing tool on the selected layer'),
+            text=self.tr('Buffer drawing on objects in selected layer'),
             checkable=True,
             menu=bufferMenu,
             callback=self.drawBuffer,
@@ -276,46 +312,49 @@ class QdrawEVT(object):
 
     def showAttributesTable(self, name):
 
-        tab = AttributesTable(self.iface, name)
+        tab = AttributesTable(name)
 
         # Pour que la fenêtre reste au premier plan de toutes les applications en cours
         tab.setWindowFlags(Qt.WindowStaysOnTopHint)
 
-        layers = QgsProject().instance().mapLayers().values()
+        layers = self.project.mapLayers().values()
         for layer in layers:
-            if layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(
-                    layer.id()).isVisible():
+            try:
+                if layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(
+                        layer.id()).isVisible():
 
-                # Modification F Thévand
-                # pour prise en compte de la configuration du masquage des colonnes attributaires des couches
-                # et prise en compte des alias de colonnes.
-                # Travail sur la selection dans les couches concernées seulement
+                    # Modification F Thévand
+                    # pour prise en compte de la configuration du masquage des colonnes attributaires des couches
+                    # et prise en compte des alias de colonnes.
+                    # Travail sur la selection dans les couches concernées seulement
 
-                cells = layer.selectedFeatures()
-                if len(cells) != 0:
-                    columns = layer.attributeTableConfig().columns()
-                    fields_aliases = []
-                    fields_name = []
-                    for column in columns:
-                        if not column.hidden:
-                            if layer.attributeAlias(layer.fields().indexOf(column.name)):
-                                fields_aliases.append(layer.attributeAlias(layer.fields().indexOf(column.name)))
-                                fields_name.append(layer.attributeAlias(layer.fields().indexOf(column.name)))
-                            else:
-                                fields_name.append(column.name)
-                        fields_type = [column.type for column in columns if not column.hidden]
-                        idx_visible = [layer.fields().indexOf(column.name) for column in columns if not column.hidden]
-                        # idx_masked = [layer.fields().indexOf(column.name) for column in columns if column.hidden]
+                    cells = layer.selectedFeatures()
+                    if len(cells) != 0:
+                        columns = layer.attributeTableConfig().columns()
+                        fields_aliases = []
+                        fields_name = []
+                        for column in columns:
+                            if not column.hidden:
+                                if layer.attributeAlias(layer.fields().indexOf(column.name)):
+                                    fields_aliases.append(layer.attributeAlias(layer.fields().indexOf(column.name)))
+                                    fields_name.append(layer.attributeAlias(layer.fields().indexOf(column.name)))
+                                else:
+                                    fields_name.append(column.name)
+                            fields_type = [column.type for column in columns if not column.hidden]
+                            idx_visible = [layer.fields().indexOf(column.name) for column in columns if not column.hidden]
+                            # idx_masked = [layer.fields().indexOf(column.name) for column in columns if column.hidden]
 
-                    # Fin modification
+                        # Fin modification
+                        # print('layer entrée addLayer : ' + str(layer))
 
-                    tab.addLayer(layer, fields_name, fields_type, cells, idx_visible)
+                        tab.addLayer(layer, fields_name, fields_type, cells, idx_visible)
 
-                    # Pour contrôle
-                    # print("Couche " + layer.name())
-                    # print("alias : " + str(fields_aliases))
-                    # print("Longueur chaine alias : " + str(len(fields_aliases)))
-
+                        # Pour contrôle
+                        # print("Couche " + layer.name())
+                        # print("alias : " + str(fields_aliases))
+                        # print("Longueur chaine alias : " + str(len(fields_aliases)))
+            except:
+                pass
         tab.loadingWindow.close()
         tab.show()
         tab.activateWindow();
@@ -326,23 +365,68 @@ class QdrawEVT(object):
     def closeAttributesTable(self, tab):
         self.results.remove(tab)
 
-    def isEVT(self):
-        # # Obtenir l'instance du projet en cours
-        # self.project = QgsProject.instance()
-        # # Root du projet en cours
-        # self.root = self.project.layerTreeRoot()
-        # Test existance du groupe Evènements avec suppression des espaces et des accents dans le nom du groupe testé
-        self.evt = False
-        self.groupevt = False
+    def testGroups(self):
+        # mise en variable des groupes a gérer pour la sélection
+        self.group_no_select = []
         for group in self.root.children():
-            test = ''.join(
-                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-            if test == 'EVENEMENTS':
-                return True
+            test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test in lst_group_no_select:
+                self.group_no_select.append(group)
+        self.group_evt = []
+        for group in self.root.children():
+            test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test in lst_group_evt:
+                self.group_evt.append(group)
+                self.group_no_select.append(group)
+        self.group_drawing = []
+        for group in self.root.children():
+            test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test in lst_group_drawing:
+                self.group_drawing.append(group)
+                self.group_no_select.append(group)
+        if self.group_evt:
+            self.evt = True
+        else:
+            self.evt = False
+
+    def isEVT(self):
+        layers_evt = []
+        layers_group_drawing = []
+        sortieEVT = False
+        for group in self.root.children():
+            test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test in lst_group_evt:
+                # Réinitialisation de l'analyse thématique des couches évènement
+                if group:
+                    for lyr in group.children():
+                        layers_evt.append(self.project.mapLayersByName(lyr.name())[0])
+                        # self.QgisV3LayerRandomColor(layer, form_wgt_libelle)
+                        # iface.layerTreeView().refreshLayerSymbology(layer.name())
+                # return True, layers_evt
+                sortieEVT = True
+                break
+
+            # Code en prévision utilisation couche dessin
+            # elif test in lst_group_drawing:
+            #     if group:
+            #         for lyr in group.children():
+            #             layers_group_drawing.append(self.project.mapLayersByName(lyr.name())[0])
+            #             # self.QgisV3LayerRandomColor(layer, form_wgt_libelle)
+            #             # iface.layerTreeView().refreshLayerSymbology(layer.name())
+            #     sortie_group_drawing = True
+
+        if sortieEVT:
+            return True, layers_evt
+        else:
+            return False, layers_evt
 
     def drawPoint(self):
         # Modification qdrawEVT
-        if self.isEVT():
+        print('self.isEVT() : ' + str(self.isEVT()))
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[1].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawPt_EVT'))
             self.actions[1].menu().actions()[0].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtXY_EVT'))
             self.actions[1].menu().actions()[1].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtDMS_EVT'))
@@ -388,14 +472,17 @@ class QdrawEVT(object):
         # default for drawXYPoint data : WGS84 EPSG:4326
         crs = QgsCoordinateReferenceSystem(4326)
         ms.setDestinationCrs(crs)
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPt_EVT.png'))
             self.actions[1].menu().actions()[0].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtXY_EVT.png'))
             self.actions[1].menu().actions()[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtDMS_EVT.png'))
-        elif not self.isEVT():
+        elif not self.isEVT()[0]:
             self.actions[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPt.png'))
             self.actions[1].menu().actions()[0].setIcon(
@@ -411,20 +498,28 @@ class QdrawEVT(object):
         self.actions[1].menu().actions()[1].triggered.disconnect()
         self.actions[1].menu().actions()[1].triggered.connect(self.drawDMSPoint)
         try:
-            tuple, ok = XYDialog().getPoint(ms.destinationCrs())
+            xytuple, ok = XYDialog().getPoint(ms.destinationCrs())
         except:
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 self.tr('Error'), self.tr('Saisie incorrecte ou clic sur Annuler'))
             return
-        point = tuple[0]
+        # print('xytuple : ' + str(xytuple))
+        # print('crs : ' + str(crs))
+        point = xytuple[0]
         ptOrigin = point
-        crsSrc = crs # projection définie dans drawXYPoint() qdrawEVT.py (WGS84)
-        crsDest = QgsCoordinateReferenceSystem("EPSG:2154")
+        if xytuple[1] != crs:
+            crsSrc = xytuple[1] # projection choisie par l'utilisateur
+        else:
+            crsSrc = crs # projection définie par défaut dans drawXYPoint() qdrawEVT.py (4326)
+        crsDest = QgsProject.instance().crs()
         crsTransform = QgsCoordinateTransform(crsSrc,crsDest, QgsProject.instance())
         # Transformation crsSrc -> crsDest
         point = crsTransform.transform(ptOrigin)
-        crs = QgsCoordinateReferenceSystem(2154)
+        # Remplacé pour utilisation de la projection du projet en cours
+        # crs = QgsCoordinateReferenceSystem(2154)
+        # Ligne de remplacement
+        crs = QgsProject.instance().crs()
         ms.setDestinationCrs(crs)
         self.XYcrs = crs
         if ok:
@@ -450,6 +545,7 @@ class QdrawEVT(object):
                 self.tool.rb.setColor(self.settings.getColor())
                 self.tool.rb.setWidth(4)
                 self.drawShape = 'XYpoint'
+                print('self.tool.rb : ' + str(self.tool.rb))
                 self.draw()
                 mc.setCenter(point)
                 mc.refresh()
@@ -460,15 +556,19 @@ class QdrawEVT(object):
         # Modification qdrawEVT
         mc = self.iface.mapCanvas()
         ms = mc.mapSettings()
+        # Gestion du changement d'aspact de l'icone d'outil
         self.layerevtname = evtpnt
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPt_EVT.png'))
             self.actions[1].menu().actions()[0].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtXY_EVT.png'))
             self.actions[1].menu().actions()[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPtDMS_EVT.png'))
-        elif not self.isEVT():
+        elif not self.isEVT()[0]:
             self.actions[1].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawPt.png'))
             self.actions[1].menu().actions()[0].setIcon(
@@ -483,29 +583,43 @@ class QdrawEVT(object):
         self.actions[1].menu().actions()[0].triggered.connect(self.drawXYPoint)
         self.actions[1].menu().actions()[1].triggered.disconnect()
         self.actions[1].menu().actions()[1].triggered.connect(self.drawDMSPoint)
+
         point, ok = DMSDialog().getPoint()
-        self.XYcrs = QgsCoordinateReferenceSystem(4326)
+        # default for drawDMSPoint data : WGS84 EPSG:4326
+        crsSrc = QgsCoordinateReferenceSystem(4326)
+        crsDest = QgsProject.instance().crs()
+        ptOrigin = point
+        crsTransform = QgsCoordinateTransform(crsSrc,crsDest, QgsProject.instance())
+        # Transformation crsSrc -> crsDest
+        point = crsTransform.transform(ptOrigin)
+        crs = QgsProject.instance().crs()
+        ms.setDestinationCrs(crs)
+        self.XYcrs = crs
+
         if ok:
             if point.x() == 0 and point.y() == 0:
                 QMessageBox.critical(
                     self.iface.mainWindow(),
                     self.tr('Error'), self.tr('Invalid input !'))
-                return
-            self.drawDMSPoint()
-            if self.tool:
-                self.tool.reset()
-            self.tool = QgsRubberBand(self.iface.mapCanvas(), QgsWkbTypes.PointGeometry)
-            self.tool.setColor(self.settings.getColor())
-            self.tool.setWidth(3)
-            self.tool.addPoint(point)
-            self.drawShape = 'XYpoint'
-            self.draw()
-            mc.setCenter(point)
-            mc.refresh()
+            else:
+                self.drawPoint()
+                self.tool.rb = QgsRubberBand(
+                    self.iface.mapCanvas(), QgsWkbTypes.PointGeometry)
+                self.tool.rb.setColor(self.settings.getColor())
+                self.tool.rb.setWidth(3)
+                self.tool.rb.addPoint(point)
+                self.drawShape = 'XYpoint'
+                self.draw()
+                # centrer la carte sur le point
+                mc.setCenter(point)
+                mc.refresh()
 
     def drawLine(self):
         # Modification qdrawEVT
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[2].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawL_EVT'))
         else:
             self.actions[2].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawL'))
@@ -524,7 +638,10 @@ class QdrawEVT(object):
 
     def drawRect(self):
         # Modification qdrawEVT
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[3].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawR_EVT'))
         else:
             self.actions[3].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawR'))
@@ -543,7 +660,10 @@ class QdrawEVT(object):
 
     def drawCircle(self):
         # Modification qdrawEVT
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[4].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawC_EVT'))
         else:
             self.actions[4].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawC'))
@@ -563,7 +683,10 @@ class QdrawEVT(object):
 
     def drawPolygon(self):
         # Modification qdrawEVT
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[5].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawP_EVT'))
         else:
             self.actions[5].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_DrawP'))
@@ -587,7 +710,10 @@ class QdrawEVT(object):
             self.tool.reset()
         self.request = 'intersects'
         self.tool = SelectPoint(self.iface, self.settings.getColor())
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[6].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawT_EVT.png'))
             self.actions[6].menu().actions()[0].setIcon(
@@ -596,7 +722,7 @@ class QdrawEVT(object):
                 self.tr('Buffer drawing tool on the selected layer'))
             self.actions[6].menu().actions()[0].setText(
                 self.tr('Polygon buffer drawing tool on the selected layer'))
-        elif not self.isEVT():
+        elif not self.isEVT()[0]:
             self.actions[6].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawT.png'))
             self.actions[6].menu().actions()[0].setIcon(
@@ -624,7 +750,10 @@ class QdrawEVT(object):
             self.tool.reset()
         self.request = 'intersects'
         self.tool = DrawPolygon(self.iface, self.settings.getColor())
-        if self.isEVT():
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0]:
             self.actions[6].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawTP_EVT.png'))
             self.actions[6].menu().actions()[0].setIcon(
@@ -633,7 +762,7 @@ class QdrawEVT(object):
                 self.tr('Polygon buffer drawing tool on the selected layer'))
             self.actions[6].menu().actions()[0].setText(
                 self.tr('Buffer drawing tool on the selected layer'))
-        elif not self.isEVT():
+        elif not self.isEVT()[0]:
             self.actions[6].setIcon(
                 QIcon(':/plugins/qdrawEVT/resources/icon_DrawTP.png'))
             self.actions[6].menu().actions()[0].setIcon(
@@ -654,10 +783,6 @@ class QdrawEVT(object):
         self.resetSB()
 
     def showSettingsWindow(self):
-        # if self.isEVT():
-        #     self.actions[7].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_Settings_EVT.png'))
-        # else:
-        #     self.actions[7].setIcon(QIcon(':/plugins/qdrawEVT/resources/icon_Settings.png'))
         self.settings.settingsChanged.connect(self.settingsChangedSlot)
         self.settings.show()
 
@@ -684,8 +809,7 @@ then select an entity on the map.'
     def updateSB(self):
         g = self.geomTransform(
             self.tool.rb.asGeometry(),
-            self.iface.mapCanvas().mapSettings().destinationCrs(),
-            QgsCoordinateReferenceSystem(2154))
+            self.iface.mapCanvas().mapSettings().destinationCrs(), QgsProject.instance().crs())
         if self.toolname == 'drawLine':
             if g.length() >= 0:
                 self.sb.showMessage(
@@ -731,7 +855,7 @@ then select an entity on the map.'
                 except:
                     # there's an error but it intersects
                     # fix_print_with_import
-                    print('error with '+layer.name()+' on '+str(feature.id()))
+                    # print('error with '+layer.name()+' on '+str(feature.id()))
                     rbGeom.append(feature.geometry())
             if len(rbGeom) > 0:
                 for geometry in rbGeom:
@@ -745,45 +869,23 @@ then select an entity on the map.'
             self.draw()
 
     def draw(self):
-
         test_draw = None
         rb = self.tool.rb
         g = rb.asGeometry()
         # Modification qdrawEVT
         mc = iface.mapCanvas()
         mc.setCenter(g.centroid().asPoint())
-        if self.drawShape in ['point', 'xypoint', 'Text']:
+        if self.drawShape in ['point', 'XYpoint', 'Text']:
             mc.zoomScale(5000)
         else:
             mc.zoomToFeatureExtent(g.boundingBox())
-        # Test existence du groupe Evènements avec suppression des espaces et des accents dans le nom du groupe testé
-        evt = False
-        groupevt = False
-        for group in self.root.children():
-            test = ''.join(
-                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-            if test == 'EVENEMENTS':
-                evt = True
-                groupevt = group
-        if groupevt:
-            # Définition de la liste des couches du groupe Evènements
-            layer_list = [layer.name() for layer in groupevt.children()]
-            # if 'EVENEMENT_LIGNE' in layer_list and 'EVENEMENT_POINT' in layer_list and 'EVENEMENT_POLYGONE' in layer_list:
-            if self.layerevtname in layer_list:
-                evt = True
-            else:
-                self.layerevtname = None
-                evt = False
-        else:
-            self.layerevtname = None
-            evt = False
 
         ok = True
         warning = False
         errBuffer_noAtt = False
         errBuffer_Vertices = False
 
-        layer = self.iface.layerTreeView().currentLayer()
+        self.layer = self.iface.layerTreeView().currentLayer()
         if self.toolname == 'drawBuffer':
             if self.bGeom is None:
                 warning = True
@@ -796,7 +898,7 @@ then select an entity on the map.'
                     min=0)
                 g = self.bGeom.buffer(perim, 40)
                 rb.setToGeometry(g, QgsVectorLayer(
-                    "Polygon?crs=" + layer.crs().authid(), "", "memory"))
+                    "Polygon?crs=" + self.layer.crs().authid(), "", "memory"))
                 if g.length() == 0 and ok:
                     warning = True
                     errBuffer_Vertices = True
@@ -806,26 +908,49 @@ then select an entity on the map.'
                 warning = True
                 errBuffer_noAtt = True
 
+        name_draw = ''
+        add = False
+        self.testGroups()
         if ok and not warning:
-            name_draw = ''
             ok = True
-            add = False
-            index = 0
-            layers = []
-            while not name_draw.strip() and ok:
+            self.index = 0
+            self.layers = []
+            # print('self.toolname : ' + str(self.toolname))
+            while not name_draw.strip() and not add and ok:
                 # Lancement de la boite de dialogue avec passage de la définition de self.drawShape (gtype en sortie)
-                dlg = QDrawLayerDialog(self.iface, self.drawShape, self.layerevtname, evt)
-                name_draw, add, index, layers, ok = dlg.getName(
-                    self.iface, self.drawShape, self.layerevtname, evt)
-        if ok and not warning and evt:
-            # ajout dessin de texte
+                dlg = QDrawLayerDialog(self.iface, self.drawShape, self.layerevtname, self.evt)
+                name_draw, add, self.index, self.layers, ok = dlg.getName(self.iface, self.drawShape, self.layerevtname, self.evt)
+        # print('self.evt : ' + str(self.evt))
+        # print('layers : ' + str(self.layers))
+        # print('ok : ' + str(ok))
+        # print('name_draw : ' + str(name_draw))
+        # print('add : ' + str(add))
+        # print('self.index : ' + str(self.index))
+        # print('self.layerevtname : ' + str(self.layerevtname))
+        # print('self.drawShape : ' + str(self.drawShape))
+
+        # print('warning : ' + str(warning))
+
+        if ok and not warning and self.evt:
             if self.drawShape == 'text':
-                symbols = layer.renderer().symbols(QgsRenderContext())  # todo which context ?
+                if self.root.findGroup(self.tr('Drawings')) is None:
+                    self.root.insertChildNode(0, QgsLayerTreeGroup(self.tr('Drawings')))
+                group = self.root.findGroup(self.tr('Drawings'))
+                test_draw = 1
+                self.layer = QgsVectorLayer(
+                    "Point?crs=" + self.iface.mapCanvas().mapSettings().destinationCrs().authid() + "&field=" + self.tr(
+                        'Drawings') + ":string(255)", name_draw, "memory")
+                g = g.centroid()  # force geometry as point
+                # self.layer.beginEditCommand("Memory layer")
+                self.layer.startEditing()
+                symbols = self.layer.renderer().symbols(QgsRenderContext())  # todo which context ?
                 symbols[0].setColor(self.settings.getColor())
-                feature = QgsFeature()
-                feature.setGeometry(g)
-                feature.setAttributes([name_draw])
-                layer.dataProvider().addFeatures([feature])
+                self.feature = QgsFeature(self.layer.fields())
+                self.feature.setGeometry(g)
+                self.feature.setAttributes([name_draw])
+                self.layer.dataProvider().addFeatures([self.feature])
+                self.featureid = self.feature.id()
+                # ajout dessin de texte
                 symbols[0].setSize(0)
                 layer_settings = QgsPalLayerSettings()
                 text_format = QgsTextFormat()
@@ -836,136 +961,124 @@ then select an entity on the map.'
                 layer_settings.fieldName = "Dessins"
                 layer_settings.placement = QgsPalLayerSettings.OverPoint
                 layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-                layer.setLabelsEnabled(True)
-                layer.setLabeling(layer_settings)
+                self.layer.setLabelsEnabled(True)
+                self.layer.setLabeling(layer_settings)
+                # self.layer.commitChanges()
+                if not add:
+                    self.project.addMapLayer(self.layer, False)
+                    group.insertLayer(0, self.layer)
+                self.iface.layerTreeView().refreshLayerSymbology(self.layer.id())
+                self.iface.mapCanvas().refresh()
             else:
-                layer = self.project.mapLayersByName(self.layerevtname)[0]
-                self.iface.setActiveLayer(layer)
-                layer.setReadOnly(False)
-                layer.startEditing()
-                pr = layer.dataProvider()
-                features = QgsFeature()
+                # ajout point, ligne ou polygone
+                self.layer = self.project.mapLayersByName(self.layerevtname)[0]
+                self.iface.setActiveLayer(self.layer)
+                self.layer.setReadOnly(False)
+                self.layer.startEditing()
+                self.features = QgsFeature()
                 # Ajout de la géométrie dans la couche
-                features.setGeometry(g)
+                self.features.setGeometry(g)
                 # Récupération de la structure de la couche
-                features.setFields(layer.fields())  # retrieve the fields from layer and set them to the feature
+                self.features.setFields(self.layer.fields())  # retrieve the fields from layer and set them to the feature
                 # print('layer.fields().count() = ' + str(layer.fields().count()))
-                #features.setAttribute(form_wgt_libelle, name_draw)
-                features.setAttribute(form_wgt_utilisatr, os.environ.get("USERNAME"))
-                # features.setAttribute(form_wgt_remarques, '')
+                # Récupération du nom de l'utilisateur
+                self.features.setAttribute(form_wgt_utilisatr, os.environ.get("USERNAME"))
+                # Test du type pour inscription des données dimentionnelles adaptées
                 if self.drawShape in ['point', 'XYpoint']:
                     # Transformation de la coordonnée en EPSG 4326
-                    crsSrc = QgsCoordinateReferenceSystem("EPSG:2154")  # L93
-                    crsDest = QgsCoordinateReferenceSystem("EPSG:4326")  # WGS 84
+                    crsSrc = QgsProject.instance().crs()  # L93
+                    crsDest = QgsCoordinateReferenceSystem(4326)  # WGS 84
                     xform1 = QgsCoordinateTransform(crsSrc, crsDest, self.project)
                     geom = g.centroid().asPoint()
                     # Transformation crsSrc -> crsDest
                     pt1 = xform1.transform(geom)
                     x1, y1 = pt1.x(), pt1.y()
                     # Inscription en donnée attributaire
-                    features.setAttribute(form_wgt_x_gps, round(x1, 6))
-                    features.setAttribute(form_wgt_y_gps, round(y1, 6))
+                    self.features.setAttribute(form_wgt_x_gps, round(x1, 6))
+                    self.features.setAttribute(form_wgt_y_gps, round(y1, 6))
                 elif self.drawShape == 'line':
-                    features.setAttribute(form_wgt_longueur, int(round(g.length(),0)))
+                    self.features.setAttribute(form_wgt_longueur, int(round(g.length(),0)))
                 elif self.drawShape == 'polygon':
-                    features.setAttribute(form_wgt_surface, int(round(g.area(), -2)))
-                # Ouverture du formulaire et enregistrement de l'objet si click sur ok
+                    self.features.setAttribute(form_wgt_surface, int(round(g.area(), -2)))
+                # Ouverture du formulaire (enregistrement de l'objet si click sur ok)
                 # avec possibilité d'attribution de focus (voir source)
-                # features.setAttribute(form_wgt_libelle, name_draw)
-                form = self.iface.getFeatureForm(layer, features)
-                # print('version_info[0] = ' + str(version_info[0]))
-                # if version_info[0] >= 3:
+                form = self.iface.getFeatureForm(self.layer, self.features)
+                # Mise du formulaire en mode création
                 form.setMode(QgsAttributeEditorContext.AddFeatureMode)
+                # Inscription du nom de l'évènement dans le formulaire (A réactiver en cas de besoin)
                 if form_wgt_libelle in lst_form_wgt:
                     libelle = form.findChild(QLineEdit, form_wgt_libelle)
                     libelle.setText(name_draw)
-                if form_wgt_date in lst_form_wgt:
-                    date = form.findChild(QDateTimeEdit, form_wgt_date)
-                if form_wgt_h_creation in lst_form_wgt:
-                    h_creation = form.findChild(QDateTimeEdit, form_wgt_h_creation)
-                if form_wgt_utilisatr in lst_form_wgt:
-                    utilisateur = form.findChild(QLineEdit, form_wgt_utilisatr)
-                if self.drawShape in ['point', 'XYpoint']:
-                    if form_wgt_x_gps in lst_form_wgt:
-                        x_gps = form.findChild(QLineEdit, form_wgt_x_gps)
-                    if form_wgt_y_gps in lst_form_wgt:
-                        y_gps = form.findChild(QLineEdit, form_wgt_y_gps)
-                elif self.drawShape == 'line':
-                    if form_wgt_longueur in lst_form_wgt:
-                        longueur = form.findChild(QLineEdit, form_wgt_longueur)
-                elif self.drawShape == 'polygon':
-                    if form_wgt_surface in lst_form_wgt:
-                        surface = form.findChild(QLineEdit, form_wgt_surface)
+                # if form_wgt_date in lst_form_wgt:
+                #     date = form.findChild(QDateTimeEdit, form_wgt_date)
+                # if form_wgt_h_creation in lst_form_wgt:
+                #     h_creation = form.findChild(QDateTimeEdit, form_wgt_h_creation)
+                # if form_wgt_utilisatr in lst_form_wgt:
+                #     utilisateur = form.findChild(QLineEdit, form_wgt_utilisatr)
+                # if self.drawShape in ['point', 'XYpoint']:
+                #     if form_wgt_x_gps in lst_form_wgt:
+                #         x_gps = form.findChild(QLineEdit, form_wgt_x_gps)
+                #     if form_wgt_y_gps in lst_form_wgt:
+                #         y_gps = form.findChild(QLineEdit, form_wgt_y_gps)
+                # elif self.drawShape == 'line':
+                #     if form_wgt_longueur in lst_form_wgt:
+                #         longueur = form.findChild(QLineEdit, form_wgt_longueur)
+                # elif self.drawShape == 'polygon':
+                #     if form_wgt_surface in lst_form_wgt:
+                #         surface = form.findChild(QLineEdit, form_wgt_surface)
+                # Attribution du focus à l'item "Source"
                 if form_wgt_source in lst_form_wgt:
                     source = form.findChild(QLineEdit, form_wgt_source)
                     source.setFocus(True)
-                if form_wgt_h_constat in lst_form_wgt:
-                    constat = form.findChild(QDateTimeEdit, 'h_constat')
-                if form_wgt_remarques in lst_form_wgt:
-                    remarques = form.findChild(QPlainTextEdit, form_wgt_remarques)
-                # test_today = datetime.today().strftime(h_creation.text())
-                # form.show()
+                # if form_wgt_h_constat in lst_form_wgt:
+                #     constat = form.findChild(QDateTimeEdit, form_wgt_h_constat)
+                # if form_wgt_remarques in lst_form_wgt:
+                #     remarques = form.findChild(QPlainTextEdit, form_wgt_remarques)
                 test_draw = form.exec_()
                 if test_draw == 1:
-                    #print("test_draw = OK")
-                    # placer ici l'inscription dans la couche des données saisies dans le formulaire
-                    # features.setAttribute(form_wgt_date, datetime.today().strftime(date.text()))
-                    # features.setAttribute(form_wgt_h_creation, datetime.today().strftime(h_creation.text()))
-                    features.setAttribute(form_wgt_utilisatr, utilisateur.text())
-                    test_h_constat = datetime.today().strftime(constat.text())
-                    # Test de l'attribut h_constat : si il est différent de l'attribut h_creation,inscription dans la couche, sinon rien
-                    if test_h_constat != datetime.today().strftime(h_creation.text()):
-                        # print('test_h_constat : ' + test_h_constat)
-                        features.setAttribute(form_wgt_h_constat, datetime.today().strftime(test_h_constat))
-                    # features.setAttribute(form_wgt_libelle, libelle.text())
-                    # features.setAttribute(form_wgt_source, source.text())
-                    # features.setAttribute(form_wgt_remarques, remarques.toPlainText())
-                    # if self.drawShape in ['point', 'XYpoint']:
-                    #     features.setAttribute(form_wgt_x_gps, x_gps.text())
-                    #     features.setAttribute(form_wgt_y_gps, y_gps.text())
-                    # elif self.drawShape == 'line':
-                    #     features.setAttribute(form_wgt_longueur, longueur.text())
-                    # elif self.drawShape == 'polygon':
-                    #     features.setAttribute(form_wgt_surface, surface.text())
-                    # layer.addFeatures([features])
-                    layer.commitChanges()
-                    layer.setReadOnly(True)
-                    self.QgisV3LayerRandomColor(layer, form_wgt_libelle)
+                    # print("test_draw = OK")
+                    self.QgisV3LayerRandomColor(self.layer, form_wgt_libelle)
+                    self.layer.commitChanges()
+                    self.layer.setReadOnly(True)
                 else:
-                    #print("test_draw = Annuler")
-                    layer.rollBack()
-                    layer.commitChanges()
-                    layer.setReadOnly(True)
-                    pass
+                    self.layer.rollBack()
+                    # self.layer.commitChanges()
+                    self.layer.setReadOnly(True)
 
-        if ok and not warning and not evt:
+        if ok and not warning and not self.evt:
+            print('Pas de groupe évènement')
+            if self.root.findGroup(self.tr('Drawings')) is None:
+                self.root.insertChildNode(0, QgsLayerTreeGroup(self.tr('Drawings')))
+            group = self.root.findGroup(self.tr('Drawings'))
             test_draw = 1
-            layer = None
             if add:
-                layer = layers[index]
+                self.layer = self.layers[self.index]
                 if self.drawShape in ['point', 'XYpoint', 'text']:
                     g = g.centroid()
             else:
                 if self.drawShape in ['point', 'text']:
-                    layer = QgsVectorLayer("Point?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
+                    self.layer = QgsVectorLayer("Point?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
                     g = g.centroid()  # force geometry as point
                 elif self.drawShape == 'XYpoint':
-                    layer = QgsVectorLayer("Point?crs="+self.XYcrs.authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
+                    self.layer = QgsVectorLayer("Point?crs="+self.XYcrs.authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
                     g = g.centroid()
                 elif self.drawShape == 'line':
-                    layer = QgsVectorLayer("LineString?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
+                    self.layer = QgsVectorLayer("LineString?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
                     # fix_print_with_import
                 else:
-                    layer = QgsVectorLayer("Polygon?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
-            layer.startEditing()
-            symbols = layer.renderer().symbols(QgsRenderContext())  # todo which context ?
+                    self.layer = QgsVectorLayer("Polygon?crs="+self.iface.mapCanvas().mapSettings().destinationCrs().authid()+"&field="+self.tr('Drawings')+":string(255)", name_draw, "memory")
+            # self.layer.beginEditCommand("Memory layer")
+            self.layer.startEditing()
+            symbols = self.layer.renderer().symbols(QgsRenderContext())  # todo which context ?
             symbols[0].setColor(self.settings.getColor())
-            feature = QgsFeature()
-            feature.setGeometry(g)
-            feature.setAttributes([name_draw])
-            layer.dataProvider().addFeatures([feature])
-            #ajout dessin de texte
+            self.feature = QgsFeature(self.layer.fields())
+            self.feature.setGeometry(g)
+            self.feature.setAttributes([name_draw])
+            self.layer.dataProvider().addFeatures([self.feature])
+            self.featureid = self.feature.id()
+            # ajout dessin de texte
             if self.drawShape == 'text':
+                print('Pas de groupe EVT, écriture texte')
                 symbols[0].setSize(0)
                 layer_settings  = QgsPalLayerSettings()
                 text_format = QgsTextFormat()
@@ -976,47 +1089,43 @@ then select an entity on the map.'
                 layer_settings.fieldName = "Dessins"
                 layer_settings.placement = QgsPalLayerSettings.OverPoint
                 layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-                layer.setLabelsEnabled(True)
-                layer.setLabeling(layer_settings)
-            layer.commitChanges()
-            if not add:
-                pjt = QgsProject.instance()
-                pjt.addMapLayer(layer, False)
-                if pjt.layerTreeRoot().findGroup(self.tr('Drawings')) is None:
-                    pjt.layerTreeRoot().insertChildNode(
-                        0, QgsLayerTreeGroup(self.tr('Drawings')))
-                group = pjt.layerTreeRoot().findGroup(
-                    self.tr('Drawings'))
-                group.insertLayer(0, layer)
-            self.iface.layerTreeView().refreshLayerSymbology(layer.id())
-            self.iface.mapCanvas().refresh()
+                self.layer.setLabelsEnabled(True)
+                self.layer.setLabeling(layer_settings)
+                self.layer.renderer().symbol().symbolLayer(0).setShape(QgsSimpleMarkerSymbolLayerBase.Star)
+                self.layer.triggerRepaint()
+                self.iface.layerTreeView().refreshLayerSymbology(self.layer.id())
+                self.iface.mapCanvas().refresh()
 
-        else:
-            if warning:
-                if errBuffer_noAtt:
-                    self.iface.messageBar().pushWarning(
-                        self.tr('Warning'),
-                        self.tr('You didn\'t click on a layer\'s attribute !'))
-                elif errBuffer_Vertices:
-                    self.iface.messageBar().pushWarning(
-                        self.tr('Warning'),
-                        self.tr('You must give a non-null value for a \
-                        point\'s or line\'s perimeter !'))
-                else:
-                    self.iface.messageBar().pushWarning(
-                        self.tr('Warning'),
-                        self.tr('There is no selected layer, or it is not \
-                        vector nor visible !'))
+            # self.layer.commitChanges()
+            if not add:
+                self.project.addMapLayer(self.layer, False)
+                group.insertLayer(0, self.layer)
+            self.iface.layerTreeView().refreshLayerSymbology(self.layer.id())
+            self.iface.mapCanvas().refresh()
+            # self.layer.commitChanges()
+
+            # self.testGroups()
+
+            #     pjt = QgsProject.instance()
+            #     pjt.addMapLayer(layer, False)
+            #     if pjt.layerTreeRoot().findGroup(self.tr('Drawings')) is None:
+            #         pjt.layerTreeRoot().insertChildNode(
+            #             0, QgsLayerTreeGroup(self.tr('Drawings')))
+            #     group = pjt.layerTreeRoot().findGroup(
+            #         self.tr('Drawings'))
+            #     group.insertLayer(0, layer)
+            # self.iface.layerTreeView().refreshLayerSymbology(layer.id())
+            # self.iface.mapCanvas().refresh()
+
         # Modification pour ajout de la sélection des couches intersectant
         # une ligne ou un polygone, avec cochage automatique du groupe enjeux
-        # self.tool.reset()
-        # self.resetSB()
-        # self.bGeom = None
         if self.drawShape not in ['point', 'XYpoint', 'text'] and test_draw == 1:
             # Définition du choix d'une sélection en intersection
+            print('Texte du nom : ' + str(name_draw))
             box = QMessageBox()
+            box.setWindowTitle(self.tr('Choosing a selection'))
             box.setIcon(QMessageBox.Information)
-            box.setText(self.tr("Drawing completed. Make a selection in its grip?"))
+            box.setText(name_draw + self.tr(" drawn. Make a selection in its grip?") + '\n\n' + self.tr('WARNING! In the layers panel,') + '\n' + self.tr('check WITHOUT OPENING the group to place in the selection.') + '\n')
             box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             box.setDefaultButton(QMessageBox.Yes)
             buttonYes = box.button(QMessageBox.Yes)
@@ -1024,181 +1133,195 @@ then select an entity on the map.'
             buttonNo = box.button(QMessageBox.No)
             # buttonNo.setText(self.tr('Cancel'))
             # Pour que la fenêtre reste au premier plan de toutes les applications en cours
+            box.setWindowModality(Qt.WindowModal)
             box.setWindowFlags(Qt.WindowStaysOnTopHint)
             box.exec_()
+
+            self.groupes_coches = []
+            test_coche = self.verifCocheGroupes()
+            # print('self.groupes_coches : ' + str(self.groupes_coches))
+            # print('self.group_no_select : ' + str(self.group_no_select))
+            # print('test_coche : ' + str(test_coche))
             if box.clickedButton() == buttonYes:
-                warning = True
-                ok = True
-                active = False
-                errBuffer_noAtt = False
-                errBuffer_Vertices = False
+                if test_coche:
+                    warning = False
+                    ok = True
+                    active = False
+                    errBuffer_noAtt = False
+                    errBuffer_Vertices = False
+                    buffer_geom = None
+                    buffer_geom_crs = None
 
-                buffer_geom = None
-                buffer_geom_crs = None
+                    for group in self.root.children():
+                        # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à
+                        # rechercher en majuscules)
+                        if group in self.group_no_select:
+                            group.setItemVisibilityChecked(False)
+                        if group in self.group_drawing:
+                            group.setItemVisibilityCheckedRecursive(False)
 
-                for group in self.root.children():
-                    # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Mettre le mot à rechercher en majuscules)
-                    test = ''.join(
-                        x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-                    if test == 'DESSINS':
-                        self.groupe_dessin = self.root.findGroup('Dessins')
-                        # Décochage, groupe inutile dans la sélection
-                        self.groupe_dessin.setItemVisibilityCheckedRecursive(False)
-                    if test == 'EVENEMENTS':
-                        self.groupe_evt = self.root.findGroup('Evenements')
-                        # Décochage, groupe inutile dans la sélection
-                        self.groupe_evt.setItemVisibilityCheckedRecursive(False)
-                    if test == 'ENJEUX':
-                        self.groupe_enjeux = self.root.findGroup('Enjeux')
-                        # Cochage des groupes désirés dans la sélection
-                        self.groupe_enjeux.setItemVisibilityCheckedRecursive(True)
-                    if test == 'ADMINISTRATIF':
-                        self.groupe_administratif = self.root.findGroup('Administratif')
-                        # Décochage, groupe inutile dans la sélection
-                        self.groupe_administratif.setItemVisibilityCheckedRecursive(False)
 
-                # Nous vérifions s'il y a au moins une couche visible
-                for layer in QgsProject().instance().mapLayers().values():
-                    if QgsProject.instance().layerTreeRoot().findLayer(layer.id()).isVisible():
-                        warning = False
-                        active = True
-                        break
-                # Création de buffer sur la couche courante
-                if self.request == 'buffer':
-                    layer = self.iface.layerTreeView().currentLayer()
-                    if layer is not None and layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(
-                            layer.id()).isVisible():
-                        # rubberband reprojection
-                        g = self.geomTransform(rb.asGeometry(), self.iface.mapCanvas().mapSettings().destinationCrs(),layer.crs())
-                        features = layer.getFeatures(QgsFeatureRequest(g.boundingBox()))
-                        style = layer.renderer()
-                        rbGeom = []
-                        for feature in features:
-                            geom = feature.geometry()
-                            if g.intersects(geom):
-                                rbGeom.append(QgsGeometry(feature.geometry()))
-                        if len(rbGeom) > 0:
-                            union_geoms = rbGeom[0]
-                            for geometry in rbGeom:
-                                if union_geoms.combine(geometry) is not None:
-                                    union_geoms = union_geoms.combine(geometry)
-
-                            rb.setToGeometry(union_geoms, layer)
-
-                            perim, ok = QInputDialog.getDouble(self.iface.mainWindow(), self.tr('Perimeter'),
-                                                               self.tr('Give a perimeter in m:') + '\n' + self.tr(
-                                                                   '(works only with metric crs)'), min=0)
-                            buffer_geom_crs = layer.crs()
-                            buffer_geom = union_geoms.buffer(perim, 40)
-                            rb.setToGeometry(buffer_geom, QgsVectorLayer("Polygon?crs=" + layer.crs().authid(), "", "memory"))
-                            rb.setRenderer(style)
-                            if buffer_geom.length == 0:
-                                warning = True
-                                errBuffer_Vertices = True
-                        else:
-                            warning = True
-                            errBuffer_noAtt = True
-                    else:
-                        warning = True
-                if len(QgsProject().instance().mapLayers().values()) > 0 and warning == False and ok:
-                    self.loadingWindow.show()
-                    self.loadingWindow.activateWindow();
-                    self.loadingWindow.showNormal();
+                    # Nous vérifions s'il y a au moins une couche visible
                     for layer in QgsProject().instance().mapLayers().values():
-                        if layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(
-                                layer.id()).isVisible():
-                            if self.request == 'buffer' and self.iface.layerTreeView().currentLayer() == layer:
-                                layer.selectByIds([])
-                                continue
-                            self.loadingWindow.reset()
-                            self.loadingWindow.setWindowTitle(self.tr('Selecting...'))
-                            self.loadingWindow.setLabelText(layer.name())
+                        # print('layer : ' + str(layer))
+                        # print('layer.type() : ' + str(layer.type()))
+                        try:
+                            if self.root.findLayer(layer.id()).isVisible():
+                                warning = False
+                                active = True
+                                break
+                        except:
+                            pass
 
+                    # Création de buffer sur la couche courante
+                    if self.request == 'buffer':
+                        layer = self.iface.layerTreeView().currentLayer()
+                        if layer is not None and layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(layer.id()).isVisible():
                             # rubberband reprojection
-                            if self.request == 'buffer':
-                                if buffer_geom_crs.authid() != layer.crs().authid():
-                                    g = self.geomTransform(buffer_geom, buffer_geom_crs, layer.crs())
-                                else:
-                                    g = self.geomTransform(buffer_geom, buffer_geom_crs, layer.crs())
-                            else:
-                                g = self.geomTransform(rb.asGeometry(), self.iface.mapCanvas().mapSettings().destinationCrs(),
-                                                       layer.crs())
-
-                            feat_id = []
+                            g = self.geomTransform(rb.asGeometry(), self.iface.mapCanvas().mapSettings().destinationCrs(),layer.crs())
                             features = layer.getFeatures(QgsFeatureRequest(g.boundingBox()))
-                            count = layer.getFeatures(QgsFeatureRequest(g.boundingBox()))
-
-                            nbfeatures = 0
-                            for feature in count:
-                                nbfeatures += 1
-
-                            # Select attributes intersecting with the rubberband
-                            index = 0
+                            style = layer.renderer()
+                            rbGeom = []
                             for feature in features:
                                 geom = feature.geometry()
-                                try:
-                                    if g.intersects(geom):
-                                        feat_id.append(feature.id())
-                                except:
-                                    # There's an error but it intersects
-                                    print('error with ' + layer.name() + ' on ' + str(feature.id()))
-                                    feat_id.append(feature.id())
-                                index += 1
-                                self.loadingWindow.setValue(int((float(index) / nbfeatures) * 100))
-                                if self.loadingWindow.wasCanceled():
-                                    self.loadingWindow.reset()
-                                    break
-                                QApplication.processEvents()
-                            layer.selectByIds(feat_id)
+                                if g.intersects(geom):
+                                    rbGeom.append(QgsGeometry(feature.geometry()))
+                            if len(rbGeom) > 0:
+                                union_geoms = rbGeom[0]
+                                for geometry in rbGeom:
+                                    if union_geoms.combine(geometry) is not None:
+                                        union_geoms = union_geoms.combine(geometry)
 
-                    self.loadingWindow.close()
-                    self.showAttributesTable(name_draw)
-                    # Pour épurer l'affichage, déselection de toutes les entités sélectionnées
-                    # (évite les grandes zone jaunes)
-                    if not self.settings.keepselect:
-                        # print('keepselect non coché')
-                        # root = QgsProject.instance().layerTreeRoot()
-                        for checked_layers in self.root.checkedLayers():
+                                rb.setToGeometry(union_geoms, layer)
+
+                                perim, ok = QInputDialog.getDouble(self.iface.mainWindow(), self.tr('Perimeter'),
+                                                                   self.tr('Give a perimeter in m:') + '\n' + self.tr(
+                                                                       '(works only with metric crs)'), min=0)
+                                buffer_geom_crs = layer.crs()
+                                buffer_geom = union_geoms.buffer(perim, 40)
+                                rb.setToGeometry(buffer_geom, QgsVectorLayer("Polygon?crs=" + layer.crs().authid(), "", "memory"))
+                                rb.setRenderer(style)
+                                if buffer_geom.length == 0:
+                                    warning = True
+                                    errBuffer_Vertices = True
+                            else:
+                                warning = True
+                                errBuffer_noAtt = True
+                        else:
+                            warning = True
+                    if len(QgsProject().instance().mapLayers().values()) > 0 and warning == False and ok:
+                        self.loadingWindow.show()
+                        self.loadingWindow.activateWindow()
+                        self.loadingWindow.showNormal()
+                        for layer in QgsProject().instance().mapLayers().values():
                             try:
-                                checked_layers.removeSelection()
+                                if layer.type() == QgsMapLayer.VectorLayer and QgsProject.instance().layerTreeRoot().findLayer(layer.id()).isVisible():
+                                    if self.request == 'buffer' and self.iface.layerTreeView().currentLayer() == layer:
+                                        layer.selectByIds([])
+                                        continue
+                                    self.loadingWindow.reset()
+                                    self.loadingWindow.setWindowTitle(self.tr('Selecting...'))
+                                    self.loadingWindow.setLabelText(layer.name())
+
+                                    # rubberband reprojection
+                                    if self.request == 'buffer':
+                                        if buffer_geom_crs.authid() != layer.crs().authid():
+                                            g = self.geomTransform(buffer_geom, buffer_geom_crs, layer.crs())
+                                        else:
+                                            g = self.geomTransform(buffer_geom, buffer_geom_crs, layer.crs())
+                                    else:
+                                        g = self.geomTransform(rb.asGeometry(), self.iface.mapCanvas().mapSettings().destinationCrs(),
+                                                               layer.crs())
+
+                                    feat_id = []
+                                    features = layer.getFeatures(QgsFeatureRequest(g.boundingBox()))
+                                    count = layer.getFeatures(QgsFeatureRequest(g.boundingBox()))
+
+                                    nbfeatures = 0
+                                    for feature in count:
+                                        nbfeatures += 1
+
+                                    # Select attributes intersecting with the rubberband
+                                    index = 0
+                                    for feature in features:
+                                        geom = feature.geometry()
+                                        try:
+                                            if g.intersects(geom):
+                                                feat_id.append(feature.id())
+                                        except:
+                                            # There's an error but it intersects
+                                            # print('error with ' + layer.name() + ' on ' + str(feature.id()))
+                                            feat_id.append(feature.id())
+                                        index += 1
+                                        self.loadingWindow.setValue(int((float(index) / nbfeatures) * 100))
+                                        if self.loadingWindow.wasCanceled():
+                                            self.loadingWindow.reset()
+                                            break
+                                        QApplication.processEvents()
+                                    layer.selectByIds(feat_id)
                             except:
                                 pass
-                        self.iface.mapCanvas().refresh()
-                    else:
-                        # print('keepselect coché')
-                        pass
-                else:
-                    # Display a warning in the message bar depending of the error
-                    if active == False:
-                        self.iface.messageBar().pushWarning(self.tr('Warning'), self.tr('There is no active layer !'))
-                    elif ok == False:
-                        pass
-                    elif errBuffer_noAtt:
-                        self.iface.messageBar().pushWarning(self.tr('Warning'),
-                                                            self.tr("You didn't click on a layer's attribute !"))
-                    elif errBuffer_Vertices:
-                        self.iface.messageBar().pushWarning(self.tr('Warning'), self.tr(
-                            "You must give a non-null value for a point's or line's perimeter!"))
-                    else:
-                        self.iface.messageBar().pushWarning(self.tr('Warning'), self.tr(
-                            'There is no selected layer, or it is not vector nor visible!'))
 
-                # Recochage des groupes décochés pour la sélection
-                # avec try: pour parer à l'absence du groupe dans le projet
-                try:
-                    self.groupe_dessin.setItemVisibilityCheckedRecursive(True)
-                except:
-                    pass
-                try:
-                    self.groupe_evt.setItemVisibilityCheckedRecursive(True)
-                except:
-                    pass
-                # Décochage du groupe Enjeux testé, pertinent avec la recopie des styles de colonnes, à voir
-                # try:
-                #     self.groupe_enjeux.setItemVisibilityChecked(False)
-                # except:
-                #     pass
+                        self.loadingWindow.close()
+                        self.showAttributesTable(name_draw)
+                    else:
+                        # Display a warning in the message bar depending of the error
+                        if errBuffer_noAtt:
+                            self.iface.messageBar().pushWarning(self.tr('Warning'),
+                                                                self.tr("You didn't click on a layer's attribute !"))
+                        elif errBuffer_Vertices:
+                            self.iface.messageBar().pushWarning(self.tr('Warning'), self.tr(
+                                "You must give a non-null value for a point's or line's perimeter!"))
+                        else:
+                            self.iface.messageBar().pushWarning(self.tr('Warning'), self.tr(
+                                'There is no selected layer, or it is not vector nor visible!'))
+                        for layer in self.isEVT()[1]:
+                            layer.rollback()
+                    if not ok:
+                        pass
+                elif not test_coche:
+                    if self.isEVT() == None:
+                        self.msgisEVTNone()
+                        return
+                    elif self.isEVT()[0]:
+                        self.layer.rollBack()
+                        # self.layer.commitChanges()
+                    else:
+                        self.project.removeMapLayer(self.layer.id())
+                    self.msgForgottenTick()
+            elif box.clickedButton() == buttonNo:
+                pass
         else:
+            pass
+        if self.isEVT() == None:
+            self.msgisEVTNone()
+            return
+        elif self.isEVT()[0] and ok:
+            # for layer in self.isEVT()[1]:
+            if self.layer is None:
+                self.msgNoSelect()
+                return
+            self.QgisV3LayerRandomColor(self.layer, form_wgt_libelle)
+            self.layer.setReadOnly(True)
+            try:
+                for couche in self.groupes_coches:
+                    couche.setItemVisibilityChecked(False)
+                for group in self.group_no_select:
+                    group.setItemVisibilityChecked(True)
+                for group in self.group_drawing:
+                    group.setItemVisibilityCheckedRecursive(True)
+            except:
+                pass
+        elif not self.isEVT()[0]:
+            for layer in self.isEVT()[1]:
+                self.QgisV3LayerRandomColor(layer, self.tr('Drawings'))
+            for group in self.group_drawing:
+                group.setItemVisibilityCheckedRecursive(True)
+        if str(self.groupes_coches) == 'None':
+            return
+        try:
+            self.layer.commitChanges()
+        except:
             pass
         self.tool.reset()
         self.resetSB()
@@ -1214,41 +1337,132 @@ then select an entity on the map.'
         :param fieldName: str
         :return:
         """
-
         # provide file name index and field's unique values
         fni = layer.dataProvider().fields().indexFromName(fieldName)
         unique_values = layer.uniqueValues(fni)
 
         # fill categories
         categories = []
+        # print('layer.geometryType() : ' + str(layer.geometryType()))
+        # layer.geometryType() : point = 0, ligne = 1, polygone = 2
+        geom_type = layer.geometryType()
         for unique_value in unique_values:
             # initialize the default symbol for this geometry type
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+            if geom_type == 0:
+                # Réglage de la taille des points
+                symbol.setSize(4)
+            elif geom_type == 1:
+                # Réglage de l'épaisseur des lignes
+                symbol.setWidth(2)
+            symbol.setOpacity(0.4)
 
-            # configure a symbol layer
-            layer_style = {}
-            # Couleurs aléatoires, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
-            layer_style['color'] = '%d, %d, %d, %d' % (random.randrange(0, 256), random.randrange(0, 256), random.randrange(0, 256), 25)
-            # Couleur rouge, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
-            # layer_style['color'] = '%d, %d, %d, %d' % (255, 0, 0, 25)
-            layer_style['outline'] = '#000000'
-            symbol_layer = QgsSimpleFillSymbolLayer.create(layer_style)
+            # Couleurs aléatoires, le dernier paramètre règle le niveau de transparence (de 0 à 100%) Impose
+            # l'importation de random layer_style = {} layer_style['color'] = '%d, %d, %d' % (random.randrange(0,
+            # 256), random.randrange(0, 256), random.randrange(0, 256)) layer_style['outline'] = '#000000'
+            # symbol_layer = QgsSimpleFillSymbolLayer.create(layer_style) # replace default symbol layer with the
+            # configured one if symbol_layer is not None: symbol.changeSymbolLayer(0, symbol_layer)
 
-            # replace default symbol layer with the configured one
-            if symbol_layer is not None:
-                symbol.changeSymbolLayer(0, symbol_layer)
+            # Couleur rouge sur tous les objets
+            symbol.setColor(QColor(255, 0, 0))
 
             # create renderer object
             category = QgsRendererCategory(unique_value, symbol, str(unique_value))
             # entry for the list of category items
             categories.append(category)
-
-        # create renderer object
-        renderer = QgsCategorizedSymbolRenderer(fieldName, categories)
-
-        # assign the created renderer to the layer
-        if renderer is not None:
-            layer.setRenderer(renderer)
-
+        # Création du rendu de l'objet (on ne fais rien si c'est un objet texte)
+        if self.drawShape != 'text':
+            renderer = QgsCategorizedSymbolRenderer(fieldName, categories)
+            # assign the created renderer to the layer
+            if renderer is not None:
+                layer.setRenderer(renderer)
         layer.triggerRepaint()
+
+    def verifCocheGroupes(self):
+        for group in self.root.children():
+            # Test couvrant les cas d'écriture avec accent et/ou majuscule en entête (Le résultat du test est un mot
+            # en majuscules et sans espaces)
+            # test = ''.join(x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if group not in self.group_no_select and group not in self.group_drawing:
+                if isinstance(group, QgsLayerTreeGroup):
+                    coche = self.root.findGroup(str(group.name()))
+                elif isinstance(group, QgsLayerTreeLayer):
+                    lyr = self.project.mapLayersByName(group.name())[0]
+                    coche = self.root.findLayer(lyr)
+                if coche.isVisible():
+                    self.groupes_coches.append(group)
+        if self.groupes_coches:
+            return True
+        else:
+            return False
+
+    def msgisEVTNone(self):
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Critical)
+        msgBox.setWindowTitle(self.tr("WARNING!"))
+        msgBox.setText(self.tr("Command not operational, empty project"))
+        msgBox.setStandardButtons(QMessageBox.Yes)
+        msgBox.setDefaultButton(QMessageBox.Yes)
+        buttonYes = msgBox.button(QMessageBox.Yes)
+        buttonYes.setText(self.tr('Start again'))
+        # Pour que la fenêtre reste au premier plan de toutes les applications en cours
+        msgBox.setWindowModality(Qt.WindowModal)
+        msgBox.setWindowFlags(Qt.WindowStaysOnTopHint)
+        returnValue = msgBox.exec()
+        if returnValue == buttonYes:
+            # print('OK clicked')
+            pass
+
+    def msgForgottenTick(self):
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Critical)
+        msgBox.setWindowTitle(self.tr("WARNING!"))
+        msgBox.setText(self.tr("No layer, no group are checked. Start again"))
+        msgBox.setStandardButtons(QMessageBox.Yes)
+        msgBox.setDefaultButton(QMessageBox.Yes)
+        buttonYes = msgBox.button(QMessageBox.Yes)
+        buttonYes.setText(self.tr('Start again'))
+        # Pour que la fenêtre reste au premier plan de toutes les applications en cours
+        msgBox.setWindowModality(Qt.WindowModal)
+        msgBox.setWindowFlags(Qt.WindowStaysOnTopHint)
+        returnValue = msgBox.exec()
+        if returnValue == buttonYes:
+            # print('OK clicked')
+            pass
+
+    def msgForgottenPolygon(self):
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Warning)
+        msgBox.setWindowTitle(self.tr("WARNING!"))
+        # msgBox.setText(self.tr("Selection not possible. the checked layer is not a polygon."))
+        msgBox.setText(self.tr("Sélection impossible.  la couche cochée n'est pas un polygone."))
+        msgBox.setStandardButtons(QMessageBox.Yes)
+        msgBox.setDefaultButton(QMessageBox.Yes)
+        buttonYes = msgBox.button(QMessageBox.Yes)
+        buttonYes.setText(self.tr('Start again'))
+        # Pour que la fenêtre reste au premier plan de toutes les applications en cours
+        msgBox.setWindowModality(Qt.WindowModal)
+        msgBox.setWindowFlags(Qt.WindowStaysOnTopHint)
+        returnValue = msgBox.exec()
+        if returnValue == buttonYes:
+            # print('OK clicked')
+            pass
+
+    def msgNoSelect(self):
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Warning)
+        msgBox.setWindowTitle(self.tr("WARNING!"))
+        # msgBox.setText(self.tr("Selection not possible. No layers are selected in the Layer Manager."))
+        msgBox.setText(self.tr("Sélection impossible.  Aucune couche n'est sélectionnée dans le gestionnaire de couches."))
+        msgBox.setStandardButtons(QMessageBox.Yes)
+        msgBox.setDefaultButton(QMessageBox.Yes)
+        buttonYes = msgBox.button(QMessageBox.Yes)
+        buttonYes.setText(self.tr('Start again'))
+        # Pour que la fenêtre reste au premier plan de toutes les applications en cours
+        msgBox.setWindowModality(Qt.WindowModal)
+        msgBox.setWindowFlags(Qt.WindowStaysOnTopHint)
+        returnValue = msgBox.exec()
+        if returnValue == buttonYes:
+            # print('OK clicked')
+            pass
 

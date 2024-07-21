@@ -17,23 +17,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
+import random
+import unicodedata
 from builtins import str
 
-from qgis.PyQt.QtWidgets import QWidget, QPushButton, QSlider, QDesktopWidget,\
-    QLabel, QColorDialog, QVBoxLayout, QFontDialog, QMessageBox
-
-from qgis.PyQt.QtGui import QColor, QFont
-
 from qgis.PyQt.QtCore import Qt, QCoreApplication, pyqtSignal, QVariant
-
-from qgis.core import QgsSettings, QgsProject, QgsVectorLayer, QgsVectorFileWriter,\
-    QgsWkbTypes, QgsField, QgsFields, QgsLayerTree, QgsApplication, QgsLayerTreeLayer
-
-from qgis.utils import iface
-
+from qgis.PyQt.QtGui import QColor, QFont
+from qgis.PyQt.QtWidgets import QWidget, QPushButton, QSlider, QDesktopWidget, \
+    QLabel, QColorDialog, QVBoxLayout, QFontDialog, QMessageBox
 from qgis.core import *
-
-import os, unicodedata, random
+from qgis.core import QgsSettings, QgsProject, QgsVectorLayer, QgsVectorFileWriter, \
+    QgsWkbTypes, QgsField, QgsFields, QgsLayerTree, QgsApplication, QgsLayerTreeLayer
+from qgis.utils import iface
 
 from . import resources
 
@@ -173,22 +169,22 @@ class QdrawSettings(QWidget):
         evt = None
         groupevt = None
 
-        # for group in root.children():
-        #     test = ''.join(
-        #         x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
-        #     if test == 'EVENEMENTS':
-        #         evt = True
-        #         groupevt = group
-        #         # print('os.path : ' + str(os.path))
-        #         # print('project.path : ' + str(project.homePath()))
-        #         if os.path.isfile(evtpath + "Evenements/POLYGONE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/LIGNE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/POINT_EVENEMENT.shp"):
-        #             print('Couches déjà créées')
-        #             QMessageBox.warning(
-        #                 self.iface.mainWindow(),
-        #                 self.tr("Commande inutile : "), self.tr("Les couches sont déja présentes."))
-        #             self.btn_createLayers.setEnabled(False)
-        #             # self.close()
-        #         return
+        for group in root.children():
+            test = ''.join(
+                x for x in unicodedata.normalize('NFKD', group.name()) if unicodedata.category(x)[0] == 'L').upper()
+            if test == 'EVENEMENTS':
+                evt = True
+                groupevt = group
+                # print('os.path : ' + str(os.path))
+                # print('project.path : ' + str(project.homePath()))
+                if os.path.isfile(evtpath + "Evenements/POLYGONE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/LIGNE_EVENEMENT.shp") or os.path.isfile(evtpath + "Evenements/POINT_EVENEMENT.shp"):
+                    print('Couches déjà créées')
+                    QMessageBox.warning(
+                        self.iface.mainWindow(),
+                        self.tr("Commande inutile : "), self.tr("Les couches sont déja présentes."))
+                    self.btn_createLayers.setEnabled(False)
+                    # self.close()
+                return
 
         if not evt:
             if nameproj != '':
@@ -211,9 +207,8 @@ class QdrawSettings(QWidget):
         lstlayerEVT = []
 
         if os.path.isfile(evtpath + "/Evenements/POLYGONE_EVENEMENT.shp"):
-            print('Champ QgisV3LayerRandomColor : ' + self.form_wgt_libelle)
             vlayer = QgsVectorLayer(evtpath + "/Evenements/POLYGONE_EVENEMENT.shp", "POLYGONE_EVENEMENT", "ogr")
-            print('Chemin :' + evtpath + "Evenements/POLYGONE_EVENEMENT.shp")
+            # print('Chemin :' + evtpath + "Evenements/POLYGONE_EVENEMENT.shp")
             vlayer.loadNamedStyle(qmlpath + 'POLYGONE_EVENEMENT.qml')
             project.addMapLayer(vlayer)
             layer = root.findLayer(vlayer.id())
@@ -302,10 +297,10 @@ class QdrawSettings(QWidget):
                 parent = myptlayer.parent()
                 groupevt.insertChildNode(0, myptlayerclone)
                 parent.removeChildNode(myptlayer)
-                layer.setReadOnly(True)
                 lyr.updateFields()
                 lyr.triggerRepaint()
                 lyr.commitChanges()
+                # layer.setReadOnly(True)
 
                 if writer.hasError() != QgsVectorFileWriter.NoError:
                     print(self.tr("Error when creating shapefile: "), writer.errorMessage())
@@ -313,6 +308,7 @@ class QdrawSettings(QWidget):
                         self.iface.mainWindow(),
                         self.tr("Error when creating shapefile ") + lyr.name() + " : ", writer.errorMessage())
                     return
+
                 del writer
 
         root = project.layerTreeRoot()
@@ -334,10 +330,21 @@ class QdrawSettings(QWidget):
         return self.colorFont
 
     def center(self):
-        screen = QDesktopWidget().screenGeometry()
-        size = self.geometry()
-        self.move((screen.width() - size.width()) / 2,
-                  (screen.height() - size.height()) / 2)
+       screen = QDesktopWidget().screenGeometry()
+       size = self.geometry()
+       self.move((screen.width() - size.width()) / 2,
+                 (screen.height() - size.height()) / 2)
+
+    # def center(self):
+    #     screen = QDesktopWidget().screenGeometry()
+    #     # self.update_idletasks()
+    #     print(str(self.geometry()))
+    #     l, h, x, y = self.geoliste(self.geometry())
+    #     self.geometry("%dx%d%+d%+d" % (l, h, (self.winfo_screenwidth() - l) // 2, (self.fen.winfo_screenheight() - h) // 2))
+    #
+    # def geoliste(g):
+    #     r=[i for i in range(0,len(g)) if not g[i].isdigit()]
+    #     return [int(g[0:r[0]]),int(g[r[0]+1:r[1]]),int(g[r[1]+1:r[2]]),int(g[r[2]+1:])]
 
     def verifEVT(self):
         self.iface = iface
@@ -372,7 +379,6 @@ class QdrawSettings(QWidget):
                 #     self.tr("Creation of event shapefile: "), self.tr("Possible only in a saved project. The layers will thus be created in an events sub-folder of the folder containing the project."))
 
     def showEvent(self, o):
-        print('show passé')
         # self.verifEVT()
         o.accept()
 
@@ -422,22 +428,31 @@ class QdrawSettings(QWidget):
 
         # fill categories
         categories = []
+        # print('layer.geometryType() : ' + str(layer.geometryType()))
+        # layer.geometryType() : point = 0, ligne = 1, polygone = 2
+        geom_type = layer.geometryType()
         for unique_value in unique_values:
             # initialize the default symbol for this geometry type
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+            if geom_type == 0:
+                # Réglage de la taille des points
+                symbol.setSize(4)
+            elif geom_type == 1:
+                # Réglage de l'épaisseur des lignes
+                symbol.setWidth(1.5)
+            symbol.setOpacity(0.4)
 
-            # configure a symbol layer
-            layer_style = {}
-            # Couleurs aléatoires, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
-            layer_style['color'] = '%d, %d, %d, %d' % (random.randrange(0, 256), random.randrange(0, 256), random.randrange(0, 256), 30)
-            # Couleur rouge, le dernier paramètre règle le niveau de transparence (de 0 à 100%)
-            # layer_style['color'] = '%d, %d, %d, %d' % (255, 0, 0, 25)
-            layer_style['outline'] = '#000000'
-            symbol_layer = QgsSimpleFillSymbolLayer.create(layer_style)
+            # Couleurs aléatoires, le dernier paramètre règle le niveau de transparence (de 0 à 100%) Impose l'importation de random
+            # layer_style = {}
+            # layer_style['color'] = '%d, %d, %d, %d' % (random.randrange(0, 256), random.randrange(0, 256), random.randrange(0, 256), 40)
+            # layer_style['outline'] = '#000000'
+            # symbol_layer = QgsSimpleFillSymbolLayer.create(layer_style)
+            # # replace default symbol layer with the configured one
+            # if symbol_layer is not None:
+            #     symbol.changeSymbolLayer(0, symbol_layer)
 
-            # replace default symbol layer with the configured one
-            if symbol_layer is not None:
-                symbol.changeSymbolLayer(0, symbol_layer)
+            # Couleur rouge sur tous les objets
+            symbol.setColor(QColor(255, 0, 0))
 
             # create renderer object
             category = QgsRendererCategory(unique_value, symbol, str(unique_value))
@@ -446,7 +461,6 @@ class QdrawSettings(QWidget):
 
         # create renderer object
         renderer = QgsCategorizedSymbolRenderer(fieldName, categories)
-
         # assign the created renderer to the layer
         if renderer is not None:
             layer.setRenderer(renderer)
